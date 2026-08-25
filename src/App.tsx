@@ -4,7 +4,8 @@ import {
   telHref,
   waHref,
   WA_DEFAULT,
-  CARS,
+  liveCars,
+  useDbVersion,
   ROUTES,
   SERVICES,
   BADGES,
@@ -190,9 +191,10 @@ function Header() {
 function FareCheckCard() {
   const [destId, setDestId] = useState("delhi");
   const route = ROUTES.find((r) => r.id === destId) ?? ROUTES[0];
-  const fare = oneWayFare(route.km, CARS[0].perKm);
+  const car = liveCars()[0];
+  const fare = car ? oneWayFare(route.km, car.perKm) : 0;
   const waText = waHref(
-    `Hi Apna Punjab Cab Service! I'd like to book a Swift Dzire from Ludhiana to ${route.name}. Indicative fare ${inr(fare)}. Please confirm.`
+    `Hi Apna Punjab Cab Service! I'd like to book a ${car?.name ?? "cab"} from Ludhiana to ${route.name}. Indicative fare ${inr(fare)}. Please confirm.`
   );
 
   return (
@@ -261,11 +263,11 @@ function FareCheckCard() {
                 Indicative one-way
               </p>
               <p className="font-display text-[40px] font-extrabold leading-none tracking-tight text-ink-900">
-                {inr(fare)}
+                {car ? inr(fare) : "Call us"}
               </p>
             </div>
             <div className="text-right text-[13px] font-semibold text-ink-500">
-              <p className="font-bold text-ink-700">Swift Dzire</p>
+              <p className="font-bold text-ink-700">{car?.name ?? "Any car"}</p>
               <p>
                 {route.km} km · ~{route.eta}
               </p>
@@ -560,8 +562,12 @@ function Fleet() {
         </Reveal>
 
         <div className="mt-14 grid items-start gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {CARS.map((car, i) => (
-            <Reveal key={car.id} delay={i * 110} className={i === 1 ? "lg:mt-8" : i === 2 ? "lg:mt-16" : ""}>
+          {liveCars().map((car, i) => (
+            <Reveal
+              key={car.id}
+              delay={(i % 3) * 110}
+              className={i % 3 === 1 ? "lg:mt-8" : i % 3 === 2 ? "lg:mt-16" : ""}
+            >
               <article className="group overflow-hidden rounded-xl border border-ink-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-ink-900/10">
                 <div className={`relative h-44 overflow-hidden bg-gradient-to-br sm:h-48 ${car.tone}`}>
                   <SmartImg
@@ -649,15 +655,31 @@ function RoutesSection() {
   const [carId, setCarId] = useState("dzire");
   const [round, setRound] = useState(false);
 
+  const cars = liveCars();
   const route = ROUTES.find((r) => r.id === routeId) ?? ROUTES[0];
-  const car = CARS.find((c) => c.id === carId) ?? CARS[0];
-  const one = oneWayFare(route.km, car.perKm);
+  const car = cars.find((c) => c.id === carId) ?? cars[0];
+  const one = car ? oneWayFare(route.km, car.perKm) : 0;
   const fare = round ? roundFare(one) : one;
   const tripLabel = round ? "round trip" : "one-way";
 
   const waText = waHref(
-    `Hi Apna Punjab Cab Service! I'd like to book a ${car.name} from Ludhiana to ${route.name} (${tripLabel}, ~${route.km} km). Indicative fare ${inr(fare)}. Please confirm my booking.`
+    `Hi Apna Punjab Cab Service! I'd like to book a ${car?.name ?? "cab"} from Ludhiana to ${route.name} (${tripLabel}, ~${route.km} km). Indicative fare ${inr(fare)}. Please confirm my booking.`
   );
+
+  if (!car) {
+    return (
+      <section id="routes" className="bg-white py-20">
+        <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-ink-200 px-6 py-14 text-center">
+          <p className="font-display text-xl font-extrabold text-ink-900">Fare desk is being updated</p>
+          <p className="mt-2 text-sm font-semibold text-ink-500">
+            Our fleet list is momentarily unavailable online — call{" "}
+            <a href={telHref} className="font-bold text-sky-600">{BIZ.phoneDisplay}</a>{" "}
+            for an instant quote.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="routes" className="relative bg-white py-20 sm:py-24">
@@ -781,8 +803,8 @@ function RoutesSection() {
               <span className="grid size-6 place-items-center rounded-full bg-sky-500 text-xs font-extrabold text-white">2</span>
               <p className="text-sm font-extrabold uppercase tracking-wider text-ink-800">Pick a car</p>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {CARS.map((c) => {
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {cars.map((c) => {
                 const active = c.id === carId;
                 return (
                   <button
@@ -1289,8 +1311,10 @@ function FloatingActions() {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  /* re-render the whole page whenever admin-side settings change */
+  /* re-render the whole page whenever admin-side settings or the
+     CRM database (fleet, rates, content…) change */
   useSettings();
+  useDbVersion();
   return (
     <div className="bg-white font-body text-ink-900 antialiased">
       <Header />

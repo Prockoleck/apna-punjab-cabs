@@ -502,13 +502,22 @@ export const api = {
     return getDb().vehicles.map((v) => ({ ...v }));
   },
 
-  async saveVehicle(v: Vehicle) {
+  async saveVehicle(v: Vehicle): Promise<Vehicle> {
     await delay();
     const db = getDb();
-    const i = db.vehicles.findIndex((x) => x.id === v.id);
-    if (i >= 0) db.vehicles[i] = v;
-    log("Fleet updated", `${v.name} · ₹${v.perKm}/km · ${v.available ? "available" : "unavailable"}`);
+    const i = v.id ? db.vehicles.findIndex((x) => x.id === v.id) : -1;
+    if (i >= 0) {
+      db.vehicles[i] = v;
+      log("Fleet updated", `${v.name} · ₹${v.perKm}/km · ${v.available ? "available" : "unavailable"}`);
+    } else {
+      const nv: Vehicle = { ...v, id: `VH-${Date.now().toString(36).slice(-6)}` };
+      db.vehicles.push(nv);
+      log("Fleet added", `${nv.name} (${nv.tag}) · ₹${nv.perKm}/km · base ₹${nv.base}`);
+      persist();
+      return nv;
+    }
     persist();
+    return v;
   },
 
   getVehicleSync(id: string): Vehicle {

@@ -1024,6 +1024,30 @@ function DriverForm({
 /*  FLEET                                                              */
 /* ================================================================== */
 
+const TONES = [
+  { id: "sky", cls: "from-sky-100 to-sky-200" },
+  { id: "ink", cls: "from-ink-100 to-ink-200" },
+  { id: "sun", cls: "from-sun-50 to-ink-100" },
+  { id: "mint", cls: "from-emerald-100 to-sky-100" },
+  { id: "rose", cls: "from-rose-100 to-sun-50" },
+  { id: "graphite", cls: "from-ink-200 to-ink-300" },
+];
+
+const blankVehicle = (): Vehicle => ({
+  id: "",
+  name: "",
+  tag: "Sedan",
+  seats: "4+1",
+  bags: "2 bags",
+  perKm: 12,
+  base: 300,
+  cityFrom: 199,
+  available: true,
+  img: "",
+  tone: TONES[0].cls,
+  ribbon: "",
+});
+
 export function FleetPanel({ notify }: { notify: Notify }) {
   const { data: vehicles, reload } = useAsync(() => api.listVehicles());
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -1032,23 +1056,40 @@ export function FleetPanel({ notify }: { notify: Notify }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm font-semibold text-ink-500">
-        Rate changes here update the public website's fleet cards & fare estimator <strong className="text-ink-800">instantly</strong>.
-      </p>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-ink-500">
+          Add cars, change rates or take a vehicle off road — the public website's fleet cards
+          & fare estimator update <strong className="text-ink-800">instantly</strong>.
+        </p>
+        <button
+          onClick={() => setEditing(blankVehicle())}
+          className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-600"
+        >
+          <span className="grid size-5 place-items-center rounded-md bg-white/20 font-display text-sm leading-none">+</span>
+          Add vehicle
+        </button>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {vehicles.map((v) => (
-          <div key={v.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg ${v.available ? "border-ink-100" : "border-rose-200 opacity-75"}`}>
-            <div className={`relative h-32 bg-gradient-to-br ${v.tone}`}>
+          <div key={v.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg ${v.available ? "border-ink-100" : "border-rose-200 opacity-80"}`}>
+            <div className={`relative h-32 bg-gradient-to-br ${v.tone || TONES[0].cls}`}>
               <SmartImg src={v.img} alt={v.name} label={v.name} className="absolute inset-0 h-full w-full object-cover" />
               <span className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${v.available ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}`}>
-                {v.available ? "Available" : "Off road"}
+                {v.available ? "Live on site" : "Off road"}
               </span>
+              {v.ribbon && (
+                <span className="absolute right-3 top-3 rounded-full bg-ink-950/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sun-400">
+                  {v.ribbon}
+                </span>
+              )}
             </div>
             <div className="p-4">
-              <div className="flex items-baseline justify-between">
-                <h3 className="font-display text-lg font-extrabold text-ink-900">{v.name}</h3>
-                <span className="text-xs font-bold text-ink-400">{v.seats} · {v.bags}</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="truncate font-display text-lg font-extrabold text-ink-900">{v.name}</h3>
+                <span className="shrink-0 text-xs font-bold text-ink-400">{v.seats} · {v.bags}</span>
               </div>
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-600">{v.tag}</p>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-xl bg-sky-50 py-2">
                   <p className="font-display text-base font-extrabold text-sky-700">₹{v.perKm}</p>
@@ -1063,50 +1104,167 @@ export function FleetPanel({ notify }: { notify: Notify }) {
                   <p className="text-[10px] font-bold uppercase text-ink-400">city from</p>
                 </div>
               </div>
-              <button
-                onClick={() => setEditing({ ...v })}
-                className="mt-3 w-full rounded-xl border border-ink-200 py-2.5 text-sm font-bold text-ink-700 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
-              >
-                Edit rates & availability
-              </button>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-ink-50 pt-3">
+                <Toggle
+                  on={v.available}
+                  onChange={async (on) => {
+                    await api.saveVehicle({ ...v, available: on });
+                    reload();
+                    notify(`${v.name} is now ${on ? "live on the website" : "hidden from the website"}`);
+                  }}
+                />
+                <button
+                  onClick={() => setEditing({ ...v })}
+                  className="rounded-xl border border-ink-200 px-3.5 py-2 text-sm font-bold text-ink-700 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  Edit details
+                </button>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {editing && (
-        <Modal open onClose={() => setEditing(null)} title={`Edit ${editing.name}`}>
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="₹ per km">
-                <input type="number" min={1} value={editing.perKm} onChange={(e) => setEditing({ ...editing, perKm: Number(e.target.value) })} className={inputCls} />
-              </Field>
-              <Field label="Base fare ₹">
-                <input type="number" min={0} value={editing.base} onChange={(e) => setEditing({ ...editing, base: Number(e.target.value) })} className={inputCls} />
-              </Field>
-              <Field label="City from ₹">
-                <input type="number" min={0} value={editing.cityFrom} onChange={(e) => setEditing({ ...editing, cityFrom: Number(e.target.value) })} className={inputCls} />
-              </Field>
-            </div>
-            <Toggle on={editing.available} onChange={(v) => setEditing({ ...editing, available: v })} label="Available for bookings" />
-            <div className="flex justify-end gap-2.5 pt-1">
-              <button onClick={() => setEditing(null)} className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50">Cancel</button>
-              <button
-                onClick={async () => {
-                  await api.saveVehicle(editing);
-                  notify(`${editing.name} rates saved — website updated`);
-                  setEditing(null);
-                  reload();
-                }}
-                className="rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 hover:bg-sky-600"
-              >
-                Save vehicle
-              </button>
-            </div>
-          </div>
-        </Modal>
+        <VehicleForm
+          vehicle={editing}
+          isNew={!editing.id}
+          onClose={() => setEditing(null)}
+          onSaved={(msg) => {
+            notify(msg);
+            setEditing(null);
+            reload();
+          }}
+        />
       )}
     </div>
+  );
+}
+
+/* -------------------------- vehicle form -------------------------- */
+
+function VehicleForm({
+  vehicle,
+  isNew,
+  onClose,
+  onSaved,
+}: {
+  vehicle: Vehicle;
+  isNew: boolean;
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [v, setV] = useState<Vehicle>({ ...vehicle });
+  const [busy, setBusy] = useState(false);
+  const set = <K extends keyof Vehicle>(k: K, val: Vehicle[K]) => setV((p) => ({ ...p, [k]: val }));
+  const valid = v.name.trim().length > 0 && v.perKm >= 1;
+
+  return (
+    <Modal open onClose={onClose} title={isNew ? "Add vehicle to fleet" : `Edit ${vehicle.name}`} wide>
+      <div className="grid gap-5 sm:grid-cols-[150px_1fr]">
+        {/* live preview */}
+        <div>
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-400">Card preview</p>
+          <div className={`relative h-24 overflow-hidden rounded-xl bg-gradient-to-br ${v.tone || TONES[0].cls}`}>
+            <SmartImg src={v.img} alt={v.name || "New vehicle"} label={v.name || "New car"} className="absolute inset-0 h-full w-full object-cover" />
+            {!v.available && (
+              <span className="absolute inset-0 grid place-items-center bg-ink-950/45 text-[10px] font-bold uppercase tracking-widest text-white">
+                Off road
+              </span>
+            )}
+          </div>
+          <p className="mt-2 font-display text-sm font-extrabold text-ink-900">{v.name || "Vehicle name"}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">{v.tag || "Category"}</p>
+          <p className="mt-1 text-xs font-semibold text-ink-400">
+            {v.seats} seats · {v.bags} · ₹{v.perKm || 0}/km
+          </p>
+        </div>
+
+        {/* fields */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Vehicle name *">
+              <input value={v.name} onChange={(e) => set("name", e.target.value)} className={inputCls} placeholder="e.g. Honda City" />
+            </Field>
+            <Field label="Category / tag">
+              <input value={v.tag} onChange={(e) => set("tag", e.target.value)} className={inputCls} placeholder="e.g. Executive Sedan" />
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Seats">
+              <input value={v.seats} onChange={(e) => set("seats", e.target.value)} className={inputCls} placeholder="4+1" />
+            </Field>
+            <Field label="Luggage">
+              <input value={v.bags} onChange={(e) => set("bags", e.target.value)} className={inputCls} placeholder="2 bags" />
+            </Field>
+            <Field label="Ribbon label">
+              <input value={v.ribbon} onChange={(e) => set("ribbon", e.target.value)} className={inputCls} placeholder="e.g. New launch" />
+            </Field>
+          </div>
+
+          <div className="rounded-xl bg-ink-900 p-3.5">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-sky-300">Pricing — drives the site's fare estimator</p>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="₹ per km *">
+                <input type="number" min={1} value={v.perKm} onChange={(e) => set("perKm", Number(e.target.value))} className={`${inputCls} !border-ink-600 !bg-ink-800 !text-white`} />
+              </Field>
+              <Field label="Base fare ₹">
+                <input type="number" min={0} value={v.base} onChange={(e) => set("base", Number(e.target.value))} className={`${inputCls} !border-ink-600 !bg-ink-800 !text-white`} />
+              </Field>
+              <Field label="City from ₹">
+                <input type="number" min={0} value={v.cityFrom} onChange={(e) => set("cityFrom", Number(e.target.value))} className={`${inputCls} !border-ink-600 !bg-ink-800 !text-white`} />
+              </Field>
+            </div>
+          </div>
+
+          <Field label="Photo URL (optional — branded placeholder is used if empty)">
+            <input value={v.img} onChange={(e) => set("img", e.target.value)} className={inputCls} placeholder="https://…/photo.png" />
+          </Field>
+
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-400">Card colour</p>
+            <div className="flex flex-wrap gap-2">
+              {TONES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => set("tone", t.cls)}
+                  aria-label={`Colour ${t.id}`}
+                  className={`h-9 w-14 rounded-lg bg-gradient-to-br transition-all hover:scale-105 ${t.cls} ${
+                    v.tone === t.cls ? "ring-2 ring-sky-500 ring-offset-2" : "ring-1 ring-ink-100"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <Toggle on={v.available} onChange={(on) => set("available", on)} label="Available — visible on the public website" />
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold text-ink-400">
+          {isNew ? "The car appears on the website the moment you save." : "Changes go live on the website instantly."}
+        </p>
+        <div className="flex gap-2.5">
+          <button onClick={onClose} className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50">
+            Cancel
+          </button>
+          <button
+            disabled={busy || !valid}
+            onClick={async () => {
+              setBusy(true);
+              const saved = await api.saveVehicle({ ...v, name: v.name.trim() });
+              setBusy(false);
+              onSaved(isNew ? `${saved.name} added to fleet — live on website` : `${saved.name} updated — website synced`);
+            }}
+            className="rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-600 disabled:opacity-50"
+          >
+            {busy ? "Saving…" : isNew ? "Add to fleet" : "Save vehicle"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

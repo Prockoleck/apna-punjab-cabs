@@ -4,7 +4,8 @@
 /*  from the admin-managed database on every read.                     */
 /* ------------------------------------------------------------------ */
 
-import { api } from "./lib/db";
+import { useEffect, useState } from "react";
+import { getDb } from "./lib/db";
 import { contentNow } from "./lib/settings";
 
 const MAPS_URL =
@@ -87,56 +88,41 @@ export type Car = {
   tone: string; // fallback gradient class
 };
 
-/* pricing fields (perKm / perKmLabel / cityFrom) read live from the
-   admin-managed fleet table, so rate changes appear on the site.      */
-function liveCar(
-  id: string,
-  meta: { name: string; tag: string; seats: string; bags: string; ribbon: string; img: string; tone: string }
-): Car {
-  return {
-    id,
-    ...meta,
-    get perKm() {
-      return api.getVehicleSync(id).perKm;
-    },
-    get perKmLabel() {
-      return `₹${api.getVehicleSync(id).perKm}/km`;
-    },
-    get cityFrom() {
-      return `City ride from ₹${api.getVehicleSync(id).cityFrom}`;
-    },
-  };
+/* The public fleet is LIVE: it mirrors the admin-managed vehicle
+   table, so added cars, rate changes and availability updates appear
+   on the website instantly. Unavailable cars are hidden from booking
+   flows.                                                              */
+export function liveCars(opts?: { includeUnavailable?: boolean }): Car[] {
+  const vehicles = getDb().vehicles;
+  return (opts?.includeUnavailable ? vehicles : vehicles.filter((v) => v.available)).map(
+    (v) => ({
+      id: v.id,
+      name: v.name,
+      tag: v.tag,
+      seats: v.seats,
+      bags: v.bags,
+      ribbon: v.ribbon,
+      img: v.img,
+      tone: v.tone || "from-sky-100 to-sky-200",
+      perKm: v.perKm,
+      perKmLabel: `₹${v.perKm}/km`,
+      cityFrom: `City ride from ₹${v.cityFrom}`,
+    })
+  );
 }
 
-export const CARS: Car[] = [
-  liveCar("dzire", {
-    name: "Swift Dzire",
-    tag: "Budget Sedan",
-    seats: "4+1",
-    bags: "2 bags",
-    ribbon: "Most booked",
-    img: "https://image.qwenlm.ai/generated-images/d85515ce-7521-445d-b6eb-2e52d8e60219/_result.png",
-    tone: "from-sky-100 to-sky-200",
-  }),
-  liveCar("ertiga", {
-    name: "Maruti Ertiga",
-    tag: "Family MPV",
-    seats: "6+1",
-    bags: "3 bags",
-    ribbon: "Family favourite",
-    img: "https://image.qwenlm.ai/generated-images/0819bc14-d5ce-4f7d-a521-68e1bb635485/_result.png",
-    tone: "from-ink-100 to-ink-200",
-  }),
-  liveCar("crysta", {
-    name: "Innova Crysta",
-    tag: "Premium SUV",
-    seats: "7+1",
-    bags: "4 bags",
-    ribbon: "Premium pick",
-    img: "https://image.qwenlm.ai/generated-images/8d98eede-a687-42b4-b06d-7c8a9e5b689a/_result.png",
-    tone: "from-sun-50 to-ink-100",
-  }),
-];
+/** Bumps whenever the database changes (any tab) so views re-render. */
+export function useDbVersion(): number {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const bump = () => setV((x) => x + 1);
+    window.addEventListener("apc:db", bump);
+    return () => window.removeEventListener("apc:db", bump);
+  }, []);
+  return v;
+}
+
+
 
 export const HERO_IMG =
   "https://image.qwenlm.ai/generated-images/ee4d5791-5d97-480f-b577-7c27fa643a5f/_result.png";

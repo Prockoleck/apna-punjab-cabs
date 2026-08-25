@@ -29,10 +29,8 @@ import {
   IconShield,
   IconSparkle,
   IconUsers,
-  IconWhatsApp,
   LogoMark,
 } from "../icons";
-import { waHref } from "../data";
 
 /* ------------------------------ gate ------------------------------ */
 
@@ -716,18 +714,6 @@ function SecurityPanel({
           </button>
         </div>
 
-        <a
-          href={waHref("Hi! I'm reviewing the Apna Punjab Cab Service admin console.")}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-3 rounded-2xl border border-ink-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-wa-500/50 hover:shadow-md"
-        >
-          <span className="grid size-10 place-items-center rounded-xl bg-wa-500 text-white"><IconWhatsApp size={20} /></span>
-          <span>
-            <span className="block font-display text-sm font-extrabold text-ink-900">Need help with the console?</span>
-            <span className="text-xs font-semibold text-ink-400">Message the web team on WhatsApp — replies within minutes.</span>
-          </span>
-        </a>
       </div>
     </div>
   );
