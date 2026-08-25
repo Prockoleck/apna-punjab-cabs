@@ -1,31 +1,75 @@
 /* ------------------------------------------------------------------ */
 /*  Apna Punjab Cab Service — business data, routes & fare logic       */
+/*  BIZ / telHref / waHref / fleet pricing are LIVE — they resolve     */
+/*  from the admin-managed database on every read.                     */
 /* ------------------------------------------------------------------ */
 
+import { api } from "./lib/db";
+import { contentNow } from "./lib/settings";
+
+const MAPS_URL =
+  "https://www.google.co.in/maps/place/APNA+PUNJAB+CAB+SERVICE/@30.9606633,75.831669,17z/";
+const MAPS_EMBED =
+  "https://www.google.com/maps?q=APNA+PUNJAB+CAB+SERVICE,+Ludhiana,+Punjab&z=15&output=embed";
+
 export const BIZ = {
-  name: "Apna Punjab Cab Service",
-  short: "Apna Punjab",
-  tagline: "Punjab's Trusted Cab Service Since 2019",
-  since: 2019,
-  phoneDisplay: "99142 91112",
-  phoneRaw: "+919914291112",
-  instagram: "https://www.instagram.com/apnapunjabcabs",
-  instagramHandle: "@apnapunjabcabs",
-  mapsUrl:
-    "https://www.google.co.in/maps/place/APNA+PUNJAB+CAB+SERVICE/@30.9606633,75.831669,17z/",
-  mapsEmbed:
-    "https://www.google.com/maps?q=APNA+PUNJAB+CAB+SERVICE,+Ludhiana,+Punjab&z=15&output=embed",
-  address: "GT Road, Near Bus Stand, Ludhiana, Punjab 141001",
-  rating: 4.6,
-  reviews: 162,
+  get name() {
+    return "Apna Punjab Cab Service";
+  },
+  get short() {
+    return "Apna Punjab";
+  },
+  get tagline() {
+    return contentNow().tagline;
+  },
+  get since() {
+    return 2019;
+  },
+  get phoneDisplay() {
+    return contentNow().phoneDisplay;
+  },
+  get phoneRaw() {
+    return contentNow().phoneRaw;
+  },
+  get instagram() {
+    return contentNow().instagram;
+  },
+  get instagramHandle() {
+    return contentNow().instagramHandle;
+  },
+  get mapsUrl() {
+    return MAPS_URL;
+  },
+  get mapsEmbed() {
+    return MAPS_EMBED;
+  },
+  get address() {
+    return contentNow().address;
+  },
+  get rating() {
+    return 4.6;
+  },
+  get reviews() {
+    return 162;
+  },
 };
 
-export const telHref = `tel:${BIZ.phoneRaw}`;
+const makeTel = () => `tel:${contentNow().phoneRaw}`;
 export const waHref = (text: string) =>
-  `https://wa.me/${BIZ.phoneRaw.replace("+", "")}?text=${encodeURIComponent(text)}`;
-export const WA_DEFAULT = waHref(
-  "Hi Apna Punjab Cab Service! I'd like to book a cab. 🚖"
-);
+  `https://wa.me/${contentNow().phoneRaw.replace("+", "")}?text=${encodeURIComponent(text)}`;
+const makeWaDefault = () => waHref(contentNow().waGreeting);
+
+/* live bindings — refreshed whenever the admin saves changes */
+export let telHref = makeTel();
+export let WA_DEFAULT = makeWaDefault();
+function refreshLiveBindings() {
+  telHref = makeTel();
+  WA_DEFAULT = makeWaDefault();
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("apc:db", refreshLiveBindings);
+  window.addEventListener("storage", refreshLiveBindings);
+}
 
 /* ------------------------------- fleet ---------------------------- */
 
@@ -43,46 +87,55 @@ export type Car = {
   tone: string; // fallback gradient class
 };
 
+/* pricing fields (perKm / perKmLabel / cityFrom) read live from the
+   admin-managed fleet table, so rate changes appear on the site.      */
+function liveCar(
+  id: string,
+  meta: { name: string; tag: string; seats: string; bags: string; ribbon: string; img: string; tone: string }
+): Car {
+  return {
+    id,
+    ...meta,
+    get perKm() {
+      return api.getVehicleSync(id).perKm;
+    },
+    get perKmLabel() {
+      return `₹${api.getVehicleSync(id).perKm}/km`;
+    },
+    get cityFrom() {
+      return `City ride from ₹${api.getVehicleSync(id).cityFrom}`;
+    },
+  };
+}
+
 export const CARS: Car[] = [
-  {
-    id: "dzire",
+  liveCar("dzire", {
     name: "Swift Dzire",
     tag: "Budget Sedan",
     seats: "4+1",
     bags: "2 bags",
-    perKm: 11,
-    perKmLabel: "₹11/km",
-    cityFrom: "City ride from ₹199",
     ribbon: "Most booked",
     img: "https://image.qwenlm.ai/generated-images/d85515ce-7521-445d-b6eb-2e52d8e60219/_result.png",
     tone: "from-sky-100 to-sky-200",
-  },
-  {
-    id: "ertiga",
+  }),
+  liveCar("ertiga", {
     name: "Maruti Ertiga",
     tag: "Family MPV",
     seats: "6+1",
     bags: "3 bags",
-    perKm: 14,
-    perKmLabel: "₹14/km",
-    cityFrom: "City ride from ₹249",
     ribbon: "Family favourite",
     img: "https://image.qwenlm.ai/generated-images/0819bc14-d5ce-4f7d-a521-68e1bb635485/_result.png",
     tone: "from-ink-100 to-ink-200",
-  },
-  {
-    id: "crysta",
+  }),
+  liveCar("crysta", {
     name: "Innova Crysta",
     tag: "Premium SUV",
     seats: "7+1",
     bags: "4 bags",
-    perKm: 17,
-    perKmLabel: "₹17/km",
-    cityFrom: "City ride from ₹299",
     ribbon: "Premium pick",
     img: "https://image.qwenlm.ai/generated-images/8d98eede-a687-42b4-b06d-7c8a9e5b689a/_result.png",
     tone: "from-sun-50 to-ink-100",
-  },
+  }),
 ];
 
 export const HERO_IMG =

@@ -44,6 +44,7 @@ import {
   IconX,
 } from "./icons";
 import { Reveal, CountUp, SmartImg, RoutePath } from "./motion";
+import { useSettings } from "./lib/settings";
 
 /* ------------------------------------------------------------------ */
 /*  small building blocks                                              */
@@ -1226,9 +1227,15 @@ function Footer() {
           <p>
             © 2026 {BIZ.name} · Ludhiana, Punjab · Since {BIZ.since}
           </p>
-          <p>
+          <p className="flex flex-wrap items-center gap-x-2">
             Demo website concept — crafted with pride in Punjab{" "}
             <span className="text-sky-500">·</span> Fares shown are indicative
+            <a
+              href="#/admin"
+              className="rounded-full border border-ink-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink-400 transition-colors hover:border-sky-400 hover:text-sky-400"
+            >
+              Staff login
+            </a>
           </p>
         </div>
       </div>
@@ -1282,6 +1289,8 @@ function FloatingActions() {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
+  /* re-render the whole page whenever admin-side settings change */
+  useSettings();
   return (
     <div className="bg-white font-body text-ink-900 antialiased">
       <Header />
