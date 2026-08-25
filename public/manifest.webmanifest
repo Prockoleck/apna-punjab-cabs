@@ -1,0 +1,26 @@
+{
+  "name": "Apna Punjab Cab Service — Owner CRM",
+  "short_name": "Apna Punjab CRM",
+  "description": "Bookings, fleet, customers and website control for Apna Punjab Cab Service, Ludhiana.",
+  "start_url": "./#/admin",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b1d2e",
+  "theme_color": "#0EA5E9",
+  "lang": "en-IN",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

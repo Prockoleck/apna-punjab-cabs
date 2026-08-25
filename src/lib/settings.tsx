@@ -1,169 +1,90 @@
 /* ================================================================== */
-/*  Live theme + content runtime.                                      */
-/*  Reads settings from the db, applies them as CSS variables on       */
-/*  :root (Tailwind v4 utilities resolve to these vars), and notifies  */
-/*  React subscribers on any db change — including across tabs.        */
+/*  Theme runtime — applies admin-configured accent palette, display   */
+/*  font and corner radius as CSS variables. Tailwind v4 utilities     */
+/*  like bg-sky-500 compile to var(--color-sky-500), so re-theming     */
+/*  the whole public site + admin console is just rewriting a dozen    */
+/*  variables on :root.                                                */
 /* ================================================================== */
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import { api, getDb, type ContentSettings, type ThemeSettings } from "./db";
+import { useEffect, type ReactNode } from "react";
+import { backend, useRealtime, type ThemeSettings } from "./backend";
 
-/* ------------------------- colour utilities ----------------------- */
+export const FONTS: Record<"bricolage" | "sora" | "space", { label: string; stack: string }> = {
+  bricolage: { label: "Bricolage Grotesque", stack: '"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif' },
+  sora: { label: "Sora", stack: '"Sora", ui-sans-serif, system-ui, sans-serif' },
+  space: { label: "Space Grotesk", stack: '"Space Grotesk", ui-sans-serif, system-ui, sans-serif' },
+};
 
 function hexToRgb(hex: string): [number, number, number] {
-  let h = hex.replace("#", "").trim();
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
-  const n = parseInt(h || "0ea5e9", 16);
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  if (isNaN(n)) return [14, 165, 233];
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-function mix(a: [number, number, number], b: [number, number, number], t: number): string {
-  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
-  return `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+function mix(hex: string, target: [number, number, number], t: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return "#" + c(r + (target[0] - r) * t) + c(g + (target[1] - g) * t) + c(b + (target[2] - b) * t);
 }
 
-const WHITE: [number, number, number] = [255, 255, 255];
-const DARK: [number, number, number] = [7, 25, 41];
-
-/** Generate a full sky-style scale from one accent hex. */
-function accentScale(hex: string): Record<string, string> {
-  const base = hexToRgb(hex);
-  const steps: [string, number, "w" | "d"][] = [
-    ["50", 0.94, "w"],
-    ["100", 0.87, "w"],
-    ["200", 0.72, "w"],
-    ["300", 0.5, "w"],
-    ["400", 0.22, "w"],
-    ["500", 0, "w"],
-    ["600", 0.14, "d"],
-    ["700", 0.28, "d"],
-    ["800", 0.45, "d"],
-    ["900", 0.62, "d"],
-    ["950", 0.78, "d"],
-  ];
-  const out: Record<string, string> = {};
-  for (const [step, t, dir] of steps) {
-    out[step] = dir === "w" ? mix(base, WHITE, t) : mix(base, DARK, t);
-  }
-  return out;
+/** Full light-to-dark scale generated from a single accent hex. */
+export function buildScale(accent: string): Record<string, string> {
+  const W: [number, number, number] = [255, 255, 255];
+  const K: [number, number, number] = [8, 40, 66];
+  return {
+    "50": mix(accent, W, 0.93),
+    "100": mix(accent, W, 0.86),
+    "200": mix(accent, W, 0.66),
+    "300": mix(accent, W, 0.4),
+    "400": mix(accent, W, 0.15),
+    "500": accent,
+    "600": mix(accent, K, 0.22),
+    "700": mix(accent, K, 0.4),
+    "800": mix(accent, K, 0.6),
+    "900": mix(accent, K, 0.78),
+    "950": mix(accent, K, 0.88),
+  };
 }
 
-export const FONTS: Record<ThemeSettings["font"], { label: string; stack: string }> = {
-  bricolage: {
-    label: "Bricolage Grotesque",
-    stack: "'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif",
-  },
-  sora: { label: "Sora", stack: "'Sora', ui-sans-serif, system-ui, sans-serif" },
-  space: { label: "Space Grotesk", stack: "'Space Grotesk', ui-sans-serif, system-ui, sans-serif" },
-};
-
-export function applyTheme(theme: ThemeSettings) {
+export function applyTheme(themeOverride?: ThemeSettings) {
+  const theme = themeOverride ?? backend.getSettingsSync().theme;
   const root = document.documentElement;
-  const scale = accentScale(theme.accent);
-  for (const [step, value] of Object.entries(scale)) {
-    root.style.setProperty(`--color-sky-${step}`, value);
+  const scale = buildScale(theme.accent);
+  for (const [k, v] of Object.entries(scale)) {
+    root.style.setProperty("--color-sky-" + k, v);
   }
-  root.style.setProperty("--font-display", FONTS[theme.font]?.stack ?? FONTS.bricolage.stack);
-  const r = Math.max(0, theme.radius);
-  root.style.setProperty("--radius-lg", `${Math.max(4, r - 6)}px`);
-  root.style.setProperty("--radius-xl", `${Math.max(6, r - 3)}px`);
-  root.style.setProperty("--radius-2xl", `${r}px`);
-  root.style.setProperty("--radius-3xl", `${r + 8}px`);
+  root.style.setProperty("--font-display", (FONTS[theme.font] ?? FONTS.bricolage).stack);
+  const r = theme.radius ?? 16;
+  root.style.setProperty("--radius-card", r + "px");
+  root.style.setProperty("--radius-btn", Math.max(6, r - 4) + "px");
 }
 
-/* apply immediately on module load — no flash of un-themed content */
-if (typeof window !== "undefined") {
-  try {
-    applyTheme(getDb().settings.theme);
-  } catch {
-    /* db unavailable — defaults in CSS remain */
-  }
+/** Live settings state — updates whenever the database changes. */
+export function useSettings(): { theme: ThemeSettings; content: ReturnType<typeof contentNow> } {
+  const tick = useRealtime();
+  useEffect(() => {
+    applyTheme();
+  }, [tick]);
+  useEffect(() => {
+    applyTheme();
+  }, []);
+  const s = backend.getSettingsSync();
+  return { theme: s.theme, content: s.content };
 }
-
-/* ---------------------------- context ----------------------------- */
-
-interface SettingsCtx {
-  version: number;
-  theme: ThemeSettings;
-  content: ContentSettings;
-  /** re-read everything from the db */
-  refresh: () => void;
-}
-
-const Ctx = createContext<SettingsCtx | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    const bump = () => {
-      try {
-        applyTheme(getDb().settings.theme);
-      } catch {
-        /* noop */
-      }
-      setVersion((v) => v + 1);
-    };
-    window.addEventListener("apc:db", bump);
-    window.addEventListener("storage", bump);
-    return () => {
-      window.removeEventListener("apc:db", bump);
-      window.removeEventListener("storage", bump);
-    };
-  }, []);
-
-  const value = useMemo<SettingsCtx>(() => {
-    let theme: ThemeSettings = { accent: "#0EA5E9", font: "bricolage", radius: 16 };
-    let content: ContentSettings = {
-      tagline: "Punjab's Trusted Cab Service Since 2019",
-      phoneDisplay: "99142 91112",
-      phoneRaw: "+919914291112",
-      instagramHandle: "@apnapunjabcabs",
-      instagram: "https://www.instagram.com/apnapunjabcabs",
-      address: "GT Road, Near Bus Stand, Ludhiana, Punjab 141001",
-      waGreeting: "Hi Apna Punjab Cab Service! I'd like to book a cab. 🚖",
-    };
-    try {
-      const s = api.getSettingsSync();
-      theme = s.theme;
-      content = s.content;
-    } catch {
-      /* keep defaults */
-    }
-    return { version, theme, content, refresh: () => setVersion((v) => v + 1) };
-  }, [version]);
-
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  useSettings();
+  return <>{children}</>;
 }
 
-/** Re-render on any db change and get the current settings. */
-export function useSettings() {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useSettings must be used inside <SettingsProvider>");
-  return ctx;
+/* --------------------------- content ------------------------------ */
+
+export function contentNow() {
+  return backend.getSettingsSync().content;
 }
 
-/* ------- sync accessors used by data.ts live getters -------------- */
-
-export function contentNow(): ContentSettings {
-  try {
-    return api.getSettingsSync().content;
-  } catch {
-    return {
-      tagline: "Punjab's Trusted Cab Service Since 2019",
-      phoneDisplay: "99142 91112",
-      phoneRaw: "+919914291112",
-      instagramHandle: "@apnapunjabcabs",
-      instagram: "https://www.instagram.com/apnapunjabcabs",
-      address: "GT Road, Near Bus Stand, Ludhiana, Punjab 141001",
-      waGreeting: "Hi Apna Punjab Cab Service! I'd like to book a cab. 🚖",
-    };
-  }
-}
+export const telHrefNow = () => "tel:" + contentNow().phoneRaw;
+export const waHrefNow = (text: string) =>
+  "https://wa.me/" + contentNow().phoneRaw.replace("+", "") + "?text=" + encodeURIComponent(text);

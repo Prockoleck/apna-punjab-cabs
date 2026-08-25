@@ -1,17 +1,13 @@
 /* ------------------------------------------------------------------ */
-/*  Apna Punjab Cab Service — business data, routes & fare logic       */
-/*  BIZ / telHref / waHref / fleet pricing are LIVE — they resolve     */
-/*  from the admin-managed database on every read.                     */
+/*  Apna Punjab Cab Service — live business data + static content      */
+/*  BIZ / telHref / waHref / fleet all resolve from the unified        */
+/*  backend, so admin changes appear across the site instantly.        */
 /* ------------------------------------------------------------------ */
 
-import { useEffect, useState } from "react";
-import { getDb } from "./lib/db";
+import { backend, useRealtime, HERO_IMG, type Vehicle } from "./lib/backend";
 import { contentNow } from "./lib/settings";
 
-const MAPS_URL =
-  "https://www.google.co.in/maps/place/APNA+PUNJAB+CAB+SERVICE/@30.9606633,75.831669,17z/";
-const MAPS_EMBED =
-  "https://www.google.com/maps?q=APNA+PUNJAB+CAB+SERVICE,+Ludhiana,+Punjab&z=15&output=embed";
+export { HERO_IMG };
 
 export const BIZ = {
   get name() {
@@ -23,9 +19,7 @@ export const BIZ = {
   get tagline() {
     return contentNow().tagline;
   },
-  get since() {
-    return 2019;
-  },
+  since: 2019,
   get phoneDisplay() {
     return contentNow().phoneDisplay;
   },
@@ -38,94 +32,38 @@ export const BIZ = {
   get instagramHandle() {
     return contentNow().instagramHandle;
   },
-  get mapsUrl() {
-    return MAPS_URL;
-  },
-  get mapsEmbed() {
-    return MAPS_EMBED;
-  },
   get address() {
     return contentNow().address;
   },
-  get rating() {
-    return 4.6;
+  get email() {
+    return contentNow().email;
   },
-  get reviews() {
-    return 162;
-  },
+  mapsUrl:
+    "https://www.google.co.in/maps/place/APNA+PUNJAB+CAB+SERVICE/@30.9606633,75.831669,17z/",
+  mapsEmbed:
+    "https://www.google.com/maps?q=APNA+PUNJAB+CAB+SERVICE,+Ludhiana,+Punjab&z=15&output=embed",
+  rating: 4.6,
+  reviews: 162,
 };
 
-const makeTel = () => `tel:${contentNow().phoneRaw}`;
+export const telHref = () => "tel:" + BIZ.phoneRaw;
 export const waHref = (text: string) =>
-  `https://wa.me/${contentNow().phoneRaw.replace("+", "")}?text=${encodeURIComponent(text)}`;
-const makeWaDefault = () => waHref(contentNow().waGreeting);
-
-/* live bindings — refreshed whenever the admin saves changes */
-export let telHref = makeTel();
-export let WA_DEFAULT = makeWaDefault();
-function refreshLiveBindings() {
-  telHref = makeTel();
-  WA_DEFAULT = makeWaDefault();
-}
-if (typeof window !== "undefined") {
-  window.addEventListener("apc:db", refreshLiveBindings);
-  window.addEventListener("storage", refreshLiveBindings);
-}
+  "https://wa.me/" + BIZ.phoneRaw.replace("+", "") + "?text=" + encodeURIComponent(text);
+export const WA_DEFAULT = () => waHref(contentNow().waGreeting);
 
 /* ------------------------------- fleet ---------------------------- */
 
-export type Car = {
-  id: string;
-  name: string;
-  tag: string;
-  seats: string;
-  bags: string;
-  perKm: number;
-  perKmLabel: string;
-  cityFrom: string;
-  ribbon: string;
-  img: string;
-  tone: string; // fallback gradient class
-};
+export type Car = Vehicle;
 
-/* The public fleet is LIVE: it mirrors the admin-managed vehicle
-   table, so added cars, rate changes and availability updates appear
-   on the website instantly. Unavailable cars are hidden from booking
-   flows.                                                              */
+/** Live fleet — mirrors the admin-managed vehicles table. */
 export function liveCars(opts?: { includeUnavailable?: boolean }): Car[] {
-  const vehicles = getDb().vehicles;
-  return (opts?.includeUnavailable ? vehicles : vehicles.filter((v) => v.available)).map(
-    (v) => ({
-      id: v.id,
-      name: v.name,
-      tag: v.tag,
-      seats: v.seats,
-      bags: v.bags,
-      ribbon: v.ribbon,
-      img: v.img,
-      tone: v.tone || "from-sky-100 to-sky-200",
-      perKm: v.perKm,
-      perKmLabel: `₹${v.perKm}/km`,
-      cityFrom: `City ride from ₹${v.cityFrom}`,
-    })
-  );
+  return backend.listVehicles(opts);
 }
 
 /** Bumps whenever the database changes (any tab) so views re-render. */
 export function useDbVersion(): number {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    const bump = () => setV((x) => x + 1);
-    window.addEventListener("apc:db", bump);
-    return () => window.removeEventListener("apc:db", bump);
-  }, []);
-  return v;
+  return useRealtime();
 }
-
-
-
-export const HERO_IMG =
-  "https://image.qwenlm.ai/generated-images/ee4d5791-5d97-480f-b577-7c27fa643a5f/_result.png";
 
 /* ------------------------------- routes --------------------------- */
 
@@ -147,12 +85,12 @@ export const ROUTES: Route[] = [
 
 const round50 = (n: number) => Math.round(n / 50) * 50;
 
-/** Indicative one-way fare: distance × per-km rate + base. */
-export function oneWayFare(km: number, perKm: number): number {
-  return round50(km * perKm + 300);
+/** Indicative one-way fare: distance x per-km rate + base. */
+export function oneWayFare(km: number, perKm: number, base = 300): number {
+  return round50(km * perKm + base);
 }
 
-/** Round trip = one-way × 1.75 (driver halt included). */
+/** Round trip = one-way x 1.75 (driver halt included). */
 export function roundFare(one: number): number {
   return round50(one * 1.75);
 }
@@ -183,7 +121,7 @@ export const SERVICES: Service[] = [
   {
     icon: "route",
     title: "Outstation Rides",
-    desc: "Ludhiana ↔ Delhi, Chandigarh, Amritsar, Manali & Shimla. One call covers the whole journey, door to door.",
+    desc: "Ludhiana to Delhi, Chandigarh, Amritsar, Manali & Shimla. One call covers the whole journey, door to door.",
     chips: ["Delhi", "Manali", "Shimla", "Amritsar"],
   },
   {
@@ -201,36 +139,12 @@ export const SERVICES: Service[] = [
 /* ------------------------------ trust badges ---------------------- */
 
 export const BADGES = [
-  {
-    icon: "clock",
-    title: "24×7 Availability",
-    desc: "3 AM airport run or midnight emergency — a driver is always on standby in Ludhiana.",
-  },
-  {
-    icon: "shield",
-    title: "Verified Drivers",
-    desc: "Background-checked, trained professionals who know Punjab's roads like their own.",
-  },
-  {
-    icon: "sparkle",
-    title: "Clean, Sanitized Cars",
-    desc: "Every car is washed, vacuumed and sanitized before your trip. Fresheners included.",
-  },
-  {
-    icon: "rupee",
-    title: "Transparent Pricing",
-    desc: "Fare agreed before the wheel turns. No hidden charges, no meter drama — ever.",
-  },
-  {
-    icon: "bolt",
-    title: "Instant Booking",
-    desc: "One call or one WhatsApp message and your cab is confirmed in minutes.",
-  },
-  {
-    icon: "award",
-    title: "5+ Years of Trust",
-    desc: "Serving Punjab since 2019 — 50,000+ trips and a 4.6★ Google rating to show for it.",
-  },
+  { icon: "clock", title: "24×7 Availability", desc: "3 AM airport run or midnight emergency — a driver is always on standby in Ludhiana." },
+  { icon: "shield", title: "Verified Drivers", desc: "Background-checked, trained professionals who know Punjab's roads like their own." },
+  { icon: "sparkle", title: "Clean, Sanitized Cars", desc: "Every car is washed, vacuumed and sanitized before your trip. Fresheners included." },
+  { icon: "rupee", title: "Transparent Pricing", desc: "Fare agreed before the wheel turns. No hidden charges, no meter drama — ever." },
+  { icon: "bolt", title: "Instant Booking", desc: "Book online in a minute, or one call / WhatsApp message and your cab is confirmed." },
+  { icon: "award", title: "5+ Years of Trust", desc: "Serving Punjab since 2019 — 50,000+ trips and a 4.6-star Google rating to show for it." },
 ];
 
 /* ----------------------------- testimonials ----------------------- */
@@ -238,14 +152,14 @@ export const BADGES = [
 export const TESTIMONIALS = [
   {
     name: "Harpreet Singh",
-    meta: "Ludhiana → Delhi IGI · 4:30 AM pickup",
+    meta: "Ludhiana to Delhi IGI · 4:30 AM pickup",
     stars: 5,
     text: "Booked at midnight for a 4:30 AM airport run — the driver was outside my gate at 4:15. Clean Dzire, careful driving on NH-44, and the fare was exactly what was quoted on the call. This is why I don't use apps anymore.",
     tone: "bg-sky-500",
   },
   {
     name: "Simran Kaur",
-    meta: "Family trip · Ludhiana → Manali → Ludhiana",
+    meta: "Family trip · Ludhiana to Manali, round trip",
     stars: 5,
     text: "Took the Innova Crysta for a Manali round trip with in-laws and kids. Driver ji waited for us at every stop without any fuss, car was spotless all 3 days, and he even suggested good food stops. Round-trip fare was very fair.",
     tone: "bg-sun-500",
@@ -261,12 +175,7 @@ export const TESTIMONIALS = [
 
 /* -------------------------------- stats --------------------------- */
 
-export const STATS: {
-  value: number;
-  suffix: string;
-  label: string;
-  decimals?: number;
-}[] = [
+export const STATS: { value: number; suffix: string; label: string; decimals?: number }[] = [
   { value: 5, suffix: "+", label: "Years on the road" },
   { value: 50000, suffix: "+", label: "Trips completed" },
   { value: 2.4, suffix: "M+", decimals: 1, label: "Kilometres driven" },
@@ -282,4 +191,15 @@ export const MARQUEE_ITEMS = [
   "Chandigarh Airport",
   "Jalandhar",
   "Local Ludhiana",
+];
+
+export const FAQS: { q: string; a: string }[] = [
+  { q: "How do I book a cab?", a: "Three easy ways: book online through our booking page (you'll get an instant reference number), call us on " + "99142 91112" + ", or send a WhatsApp message. Online bookings are confirmed on priority and our team calls back within minutes." },
+  { q: "Are the fares fixed? Any hidden charges?", a: "Yes — the fare is locked before pickup and never changes after. The price you see in the fare estimator includes the vehicle, driver and fuel. Tolls and parking are billed at actuals and shown separately on your bill. Nothing else, ever." },
+  { q: "Do you cover late-night and early-morning flights?", a: "Absolutely. We run 24×7 — a large share of our trips are 3–5 AM airport pickups. Your driver is assigned the previous evening and arrives 15 minutes early." },
+  { q: "Can the driver wait during a round trip?", a: "Yes. Round-trip bookings include driver halt time at your stop — a full day halt for Manali/Shimla trips, and shorter halts for Chandigarh/Amritsar runs. Extra night halts can be added at a small fixed charge quoted upfront." },
+  { q: "What happens if I need to cancel?", a: "Cancellation is free up to 1 hour before pickup. Within 1 hour, a small convenience fee of ₹200 applies. Just call or WhatsApp and we'll process it instantly — no forms." },
+  { q: "Are your drivers verified?", a: "Every driver is background-checked, holds a valid commercial licence with 5+ years of experience, and is retrained every quarter on safety, route planning and customer service." },
+  { q: "Do you offer corporate accounts and wedding packages?", a: "Yes. Corporate clients get monthly billing, priority cars and a dedicated contact. For weddings we handle decorated cars, baraat logistics and guest shuttles — tell us the date and we'll plan the fleet." },
+  { q: "How is the fare calculated?", a: "Fare = distance × per-km rate + a small base charge. Round trips are billed at 1.75× the one-way fare and include driver halt time. You can check indicative fares for every route on our Routes & Fares page." },
 ];

@@ -1,41 +1,61 @@
-/* Tiny router: serves the public site at / and the admin console at
-   /admin (also #/admin and ?admin as hosting fallbacks). */
+/* ================================================================== */
+/*  App router — multi-page public site + admin console.               */
+/*  HashRouter keeps deep links working on any static host; typing     */
+/*  /admin in the address bar is normalised to #/admin automatically.  */
+/* ================================================================== */
 
-import { useEffect, useState } from "react";
-import App from "./App";
+import { useEffect } from "react";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import AdminApp from "./admin/AdminApp";
-import { SettingsProvider } from "./lib/settings";
+import { PublicLayout, NotFound, PUBLIC_ROUTES } from "./pages/public";
 
-function currentMode(): "admin" | "site" {
-  const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  if (path === "/admin" || path.startsWith("/admin/")) return "admin";
-  if (window.location.hash.startsWith("#/admin")) return "admin";
-  if (new URLSearchParams(window.location.search).has("admin")) return "admin";
-  return "site";
+const {
+  HomePage,
+  CarsPage,
+  CarDetailPage,
+  BookingPage,
+  AboutPage,
+  ServicesPage,
+  ContactPage,
+  FaqPage,
+  TermsPage,
+  PrivacyPage,
+} = PUBLIC_ROUTES;
+
+/** /admin or /admin/... typed directly → redirect into the hash route. */
+function usePathNormaliser() {
+  useEffect(() => {
+    const p = window.location.pathname;
+    if (p === "/admin" || p.startsWith("/admin/")) {
+      const rest = p.slice("/admin".length) || "";
+      window.history.replaceState(null, "", window.location.pathname.replace(/\/admin\/?$/, "/") + "#/admin" + rest);
+      window.location.reload();
+    }
+  }, []);
 }
 
 export default function Root() {
-  const [mode, setMode] = useState<"admin" | "site">(currentMode);
-
-  useEffect(() => {
-    const sync = () => {
-      setMode((prev) => {
-        const next = currentMode();
-        if (next !== prev) window.scrollTo(0, 0);
-        return next;
-      });
-    };
-    window.addEventListener("popstate", sync);
-    window.addEventListener("hashchange", sync);
-    return () => {
-      window.removeEventListener("popstate", sync);
-      window.removeEventListener("hashchange", sync);
-    };
-  }, []);
-
+  usePathNormaliser();
   return (
-    <SettingsProvider>
-      {mode === "admin" ? <AdminApp /> : <App />}
-    </SettingsProvider>
+    <HashRouter>
+      <Routes>
+        <Route element={<PublicLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="cars" element={<CarsPage />} />
+          <Route path="cars/:id" element={<CarDetailPage />} />
+          <Route path="booking" element={<BookingPage />} />
+          <Route path="about" element={<AboutPage />} />
+          <Route path="services" element={<ServicesPage />} />
+          <Route path="contact" element={<ContactPage />} />
+          <Route path="faq" element={<FaqPage />} />
+          <Route path="terms" element={<TermsPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+        <Route path="/admin/*" element={<AdminApp />} />
+      </Routes>
+    </HashRouter>
   );
 }
+
+export { Navigate };

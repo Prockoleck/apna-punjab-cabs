@@ -1,6 +1,6 @@
 /* Shared admin UI primitives */
 import { useEffect, type ReactNode } from "react";
-import type { BookingStatus } from "../lib/db";
+import type { BookingStatus } from "../lib/backend";
 import { IconX, IconCheck } from "../icons";
 
 /* ----------------------------- format ----------------------------- */
@@ -35,18 +35,17 @@ export const waCustomer = (phone: string, text: string) =>
 /* ------------------------- status metadata ------------------------ */
 
 export const STATUS_META: Record<BookingStatus, { label: string; cls: string; dot: string }> = {
-  new: { label: "New", cls: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
-  confirmed: { label: "Confirmed", cls: "bg-sun-100 text-sun-600", dot: "bg-sun-500" },
-  assigned: { label: "Driver assigned", cls: "bg-ink-100 text-ink-700", dot: "bg-ink-500" },
-  enroute: { label: "En route", cls: "bg-wa-500/15 text-wa-700", dot: "bg-wa-500" },
+  pending: { label: "Pending", cls: "bg-sun-100 text-sun-600", dot: "bg-sun-500" },
+  confirmed: { label: "Confirmed", cls: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
+  enroute: { label: "In progress", cls: "bg-wa-500/15 text-wa-700", dot: "bg-wa-500" },
   completed: { label: "Completed", cls: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   cancelled: { label: "Cancelled", cls: "bg-rose-100 text-rose-700", dot: "bg-rose-400" },
+  rejected: { label: "Rejected", cls: "bg-ink-100 text-ink-500", dot: "bg-ink-300" },
 };
 
 export const NEXT_STEP: Partial<Record<BookingStatus, { to: BookingStatus; label: string }>> = {
-  new: { to: "confirmed", label: "Confirm booking" },
-  confirmed: { to: "assigned", label: "Assign driver" },
-  assigned: { to: "enroute", label: "Start trip" },
+  pending: { to: "confirmed", label: "Confirm booking" },
+  confirmed: { to: "enroute", label: "Start trip" },
   enroute: { to: "completed", label: "Mark completed" },
 };
 
@@ -153,6 +152,21 @@ export interface Toast {
   id: number;
   msg: string;
   tone: "ok" | "err";
+}
+
+export function Toast({ msg, tone }: { msg: string; tone: "ok" | "err" }) {
+  return (
+    <div
+      className={`tick-in pointer-events-auto flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-bold shadow-xl ${
+        tone === "ok" ? "border-emerald-200 bg-white text-emerald-700" : "border-rose-200 bg-white text-rose-700"
+      }`}
+    >
+      <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-white ${tone === "ok" ? "bg-emerald-500" : "bg-rose-500"}`}>
+        <IconCheck size={12} />
+      </span>
+      {msg}
+    </div>
+  );
 }
 
 export function ToastStack({ toasts }: { toasts: Toast[] }) {

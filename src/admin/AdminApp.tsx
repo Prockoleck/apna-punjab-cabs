@@ -1,719 +1,1029 @@
 /* ================================================================== */
-/*  Admin console: auth gate, shell, theme studio, security, activity  */
+/*  Admin console — router-driven:                                     */
+/*  /admin/login · /admin (dashboard) · /admin/bookings(/:id) ·        */
+/*  /admin/customers · /admin/drivers · /admin/fleet(/add,/:id/edit) · */
+/*  /admin/website · /admin/settings                                   */
 /* ================================================================== */
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  api,
+  Link,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import {
+  backend,
+  useRealtime,
+  useBackendRealtime,
   DEFAULT_PASSWORD,
-  type Activity,
-  type ContentSettings,
+  type BackendConfig,
+  type BookingStatus,
+  type HeroSection,
   type ThemeSettings,
-} from "../lib/db";
-import { applyTheme, FONTS, useSettings } from "../lib/settings";
+  type WebsiteSettings,
+} from "../lib/backend";
+import { applyTheme, FONTS } from "../lib/settings";
+import { DashboardPanel, BookingsPanel, CustomersPanel, DriversPanel, PanelSkeleton } from "./crm";
+import { FleetListPage, VehicleFormPage } from "./fleet";
+import ImageCropper, { ASPECTS } from "./ImageCropper";
 import {
-  DashboardPanel,
-  BookingsPanel,
-  CustomersPanel,
-  DriversPanel,
-  FleetPanel,
-} from "./crm";
-import { Field, ToastStack, inputCls, timeAgo, type Toast } from "./ui";
+  Field,
+  Modal,
+  NEXT_STEP,
+  Pill,
+  STATUS_META,
+  Toast,
+  Toggle,
+  fmtDateTime,
+  inr,
+  inputCls,
+  timeAgo,
+  waCustomer,
+} from "./ui";
 import {
-  CarGlyph,
   IconArrow,
   IconBolt,
+  IconCheck,
   IconClock,
+  IconInstagram,
   IconPhone,
+  IconPin,
   IconRoute,
   IconShield,
   IconSparkle,
+  IconStar,
   IconUsers,
+  IconWhatsApp,
+  IconX,
   LogoMark,
+  CarGlyph,
 } from "../icons";
 
-/* ------------------------------ gate ------------------------------ */
+type Notify = (msg: string, tone?: "ok" | "err") => void;
+
+/* ------------------------------ toasts ---------------------------- */
+
+function useToasts() {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; tone: "ok" | "err" }[]>([]);
+  const idRef = useRef(0);
+  const notify: Notify = (msg, tone = "ok") => {
+    const id = ++idRef.current;
+    setToasts((t) => [...t, { id, msg, tone }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
+  };
+  return { toasts, notify };
+}
+
+/* ------------------------------- gate ----------------------------- */
 
 export default function AdminApp() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [authed, setAuthed] = useState(() => backend.checkSession());
+  const { toasts, notify } = useToasts();
 
-  useEffect(() => {
-    setAuthed(api.checkSession());
-  }, []);
+  useBackendRealtime();
 
-  if (authed === null) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-ink-950">
-        <div className="flex items-center gap-3 text-sm font-bold text-ink-300">
-          <span className="size-2 animate-ping rounded-full bg-sky-400" /> Checking session…
-        </div>
-      </div>
-    );
-  }
-  if (!authed) return <Login onOk={() => setAuthed(true)} />;
-  return <Shell onLogout={() => setAuthed(false)} />;
-}
-
-/* ------------------------------ login ----------------------------- */
-
-function Login({ onOk }: { onOk: () => void }) {
-  const [pass, setPass] = useState("");
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [shakeKey, setShakeKey] = useState(0);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setErr("");
-    const res = await api.login(pass);
-    setBusy(false);
-    if (res.ok) onOk();
-    else {
-      setErr(res.error ?? "Login failed");
-      setShakeKey((k) => k + 1);
-    }
-  };
+  if (!authed) return <LoginPage onAuthed={() => setAuthed(true)} />;
 
   return (
-    <div className="grid min-h-screen bg-ink-950 lg:grid-cols-2">
-      {/* brand panel */}
-      <div className="dotgrid-light relative hidden overflow-hidden border-r border-ink-800 lg:block">
-        <div className="absolute -left-24 -top-24 size-96 rounded-full bg-sky-500/15 blur-3xl" />
-        <div className="absolute -bottom-32 -right-20 size-96 rounded-full bg-sun-500/10 blur-3xl" />
-        <div className="relative flex h-full flex-col justify-between p-12">
-          <div className="flex items-center gap-3">
-            <LogoMark className="size-12" />
-            <div className="leading-tight">
-              <p className="font-display text-lg font-extrabold text-white">Apna Punjab</p>
-              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-sky-400">Cab Service · Ludhiana</p>
-            </div>
-          </div>
-          <div>
-            <p className="font-display text-5xl font-extrabold leading-[1.05] text-white">
-              Run the business
-              <br />
-              <span className="text-sky-400">from one desk.</span>
-            </p>
-            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-300">
-              Bookings, customers, drivers, fleet pricing and the website's look — everything the
-              office handles daily, in one place.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-2.5">
-              {["Booking pipeline", "Customer CRM", "Driver roster", "Live theme editor", "Fare control"].map((t) => (
-                <span key={t} className="rounded-full border border-ink-700 bg-ink-900/80 px-3.5 py-1.5 text-xs font-bold text-ink-200">
-                  {t}
-                </span>
-              ))}
-            </div>
-          </div>
-          <p className="text-xs font-semibold text-ink-500">Since 2019 · 4.6★ on Google · 162 reviews</p>
-        </div>
-      </div>
-
-      {/* form panel */}
-      <div className="flex items-center justify-center p-6">
-        <form key={shakeKey} onSubmit={submit} className={`w-full max-w-sm ${err ? "shake" : ""}`}>
-          <div className="mb-8 lg:hidden">
-            <div className="flex items-center gap-3">
-              <LogoMark className="size-11" />
-              <p className="font-display text-lg font-extrabold text-white">Apna Punjab Admin</p>
-            </div>
-          </div>
-          <h1 className="font-display text-3xl font-extrabold text-white">Staff sign in</h1>
-          <p className="mt-2 text-sm font-semibold text-ink-400">
-            Enter the admin passcode to open the control room.
-          </p>
-
-          <label className="mt-7 block">
-            <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-ink-400">Passcode</span>
-            <div className="relative">
-              <input
-                type={show ? "text" : "password"}
-                value={pass}
-                onChange={(e) => setPass(e.target.value)}
-                placeholder="••••••••"
-                autoFocus
-                className="w-full rounded-xl border border-ink-700 bg-ink-900 px-4 py-3.5 pr-16 text-base font-bold tracking-widest text-white placeholder:text-ink-600 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              />
-              <button
-                type="button"
-                onClick={() => setShow((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-sky-400 hover:text-sky-300"
-              >
-                {show ? "HIDE" : "SHOW"}
-              </button>
-            </div>
-          </label>
-
-          {err && (
-            <p className="tick-in mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-bold text-rose-400">
-              {err}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy || !pass}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3.5 font-display text-base font-extrabold text-white shadow-xl shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-400 disabled:opacity-50"
-          >
-            {busy ? "Verifying…" : "Unlock control room"}
-            {!busy && <IconArrow size={17} />}
-          </button>
-
-          <div className="mt-6 rounded-xl border border-ink-800 bg-ink-900/70 p-4 text-xs font-semibold leading-relaxed text-ink-400">
-            First time here? The default passcode is{" "}
-            <button
-              type="button"
-              onClick={() => setPass(DEFAULT_PASSWORD)}
-              className="rounded-md bg-ink-800 px-2 py-0.5 font-mono font-bold text-sky-300 transition-colors hover:bg-ink-700"
-            >
-              {DEFAULT_PASSWORD}
-            </button>{" "}
-            — you'll be able to change it under <span className="text-ink-200">Security</span> after signing in.
-          </div>
-
-          <a href="#/" onClick={() => (window.location.hash = "")} className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-ink-400 transition-colors hover:text-white">
-            ← Back to website
-          </a>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------ shell ----------------------------- */
-
-const TABS: { id: string; label: string; icon: ReactNode }[] = [
-  { id: "dashboard", label: "Dashboard", icon: <IconBolt size={17} /> },
-  { id: "bookings", label: "Bookings", icon: <IconRoute size={17} /> },
-  { id: "customers", label: "Customers", icon: <IconUsers size={17} /> },
-  { id: "drivers", label: "Drivers", icon: <IconClock size={17} /> },
-  { id: "fleet", label: "Fleet & Pricing", icon: <CarGlyph className="w-5" /> },
-  { id: "theme", label: "Theme & Website", icon: <IconSparkle size={17} /> },
-  { id: "activity", label: "Activity Log", icon: <IconClock size={17} /> },
-  { id: "security", label: "Security", icon: <IconShield size={17} /> },
-];
-
-function Shell({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState("dashboard");
-  const [statusParam, setStatusParam] = useState<string | undefined>();
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [dataKey, setDataKey] = useState(0);
-
-  const notify = (msg: string, tone: "ok" | "err" = "ok") => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-3), { id, msg, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800);
-  };
-
-  const go = (t: string) => {
-    if (t.includes(":")) {
-      const [a, b] = t.split(":");
-      setTab(a);
-      setStatusParam(b);
-    } else {
-      setTab(t);
-      setStatusParam(undefined);
-    }
-    window.scrollTo({ top: 0 });
-  };
-
-  const active = TABS.find((t) => t.id === tab);
-
-  const goSite = () => {
-    if (window.location.pathname.replace(/\/+$/, "").startsWith("/admin")) {
-      window.location.href = "/";
-    } else {
-      window.location.hash = "";
-    }
-  };
-
-  const logout = async () => {
-    await api.logout();
-    window.location.hash = "";
-    onLogout();
-  };
-
-  return (
-    <div className="min-h-screen bg-ink-50/70">
-      {/* sidebar (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-ink-800 bg-ink-950 md:flex">
-        <div className="flex items-center gap-2.5 border-b border-ink-800/70 px-5 py-5">
-          <LogoMark className="size-10" />
-          <div className="leading-tight">
-            <p className="font-display text-[15px] font-extrabold text-white">Apna Punjab</p>
-            <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-sky-400">Control Room</p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => go(t.id)}
-              className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold transition-all ${
-                tab === t.id ? "bg-sky-500 text-white shadow-lg shadow-sky-500/25" : "text-ink-300 hover:bg-ink-900 hover:text-white"
-              }`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        <div className="space-y-1 border-t border-ink-800/70 p-3">
-          <button onClick={goSite} className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-ink-300 transition-colors hover:bg-ink-900 hover:text-white">
-            <IconArrow size={17} className="rotate-180" /> View website
-          </button>
-          <button onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-rose-400 transition-colors hover:bg-rose-500/10">
-            <IconShield size={17} /> Sign out
-          </button>
-        </div>
-      </aside>
-
-      {/* main */}
-      <div className="md:pl-60">
-        {/* top bar */}
-        <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/90 backdrop-blur">
-          <div className="flex items-center gap-3 px-4 py-3 md:px-8">
-            <LogoMark className="size-9 md:hidden" />
-            <div className="min-w-0">
-              <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-ink-900">{active?.label}</h1>
-              <p className="hidden text-[11px] font-bold uppercase tracking-wider text-ink-400 sm:block">
-                Apna Punjab Cab Service · Ludhiana
-              </p>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <a href="tel:+919914291112" className="hidden items-center gap-1.5 rounded-full border border-ink-200 px-3 py-1.5 text-xs font-bold text-ink-700 transition-colors hover:border-sky-300 hover:text-sky-700 sm:inline-flex">
-                <IconPhone size={13} /> 99142 91112
-              </a>
-              <button onClick={goSite} className="inline-flex items-center gap-1.5 rounded-full bg-ink-900 px-3.5 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5">
-                View site <IconArrow size={13} />
-              </button>
-            </div>
-          </div>
-          {/* mobile nav */}
-          <nav className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 md:hidden">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => go(t.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
-                  tab === t.id ? "bg-sky-500 text-white" : "bg-ink-100 text-ink-600"
-                }`}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
-          </nav>
-        </header>
-
-        <main key={dataKey} className="px-4 py-6 md:px-8 md:py-8">
-          {tab === "dashboard" && <DashboardPanel notify={notify} go={go} />}
-          {tab === "bookings" && <BookingsPanel notify={notify} initialStatus={statusParam} />}
-          {tab === "customers" && <CustomersPanel notify={notify} />}
-          {tab === "drivers" && <DriversPanel notify={notify} />}
-          {tab === "fleet" && <FleetPanel notify={notify} />}
-          {tab === "theme" && <ThemePanel notify={notify} />}
-          {tab === "activity" && <ActivityPanel />}
-          {tab === "security" && (
-            <SecurityPanel
-              notify={notify}
-              onLogout={logout}
-              onResetDemo={() => {
-                setDataKey((k) => k + 1);
-                notify("Demo data restored to a fresh seed");
-              }}
-            />
-          )}
-        </main>
-      </div>
-
-      <ToastStack toasts={toasts} />
-    </div>
-  );
-}
-
-/* --------------------------- theme studio ------------------------- */
-
-const ACCENTS = [
-  { name: "Sky", hex: "#0EA5E9" },
-  { name: "Royal", hex: "#2563EB" },
-  { name: "Teal", hex: "#14B8A6" },
-  { name: "Emerald", hex: "#10B981" },
-  { name: "Sunset", hex: "#F97316" },
-  { name: "Rose", hex: "#F43F5E" },
-  { name: "Saffron", hex: "#F59E0B" },
-  { name: "Violet", hex: "#8B5CF6" },
-];
-
-function ThemePanel({ notify }: { notify: (m: string, t?: "ok" | "err") => void }) {
-  const { theme, content } = useSettings();
-  const [t, setT] = useState<ThemeSettings>({ ...theme });
-  const [c, setC] = useState<ContentSettings>({ ...content });
-  const [busy, setBusy] = useState(false);
-
-  /* live preview — the whole site re-themes as you pick */
-  useEffect(() => {
-    applyTheme(t);
-  }, [t]);
-
-  const dirty = useMemo(
-    () => JSON.stringify(t) !== JSON.stringify(theme) || JSON.stringify(c) !== JSON.stringify(content),
-    [t, c, theme, content]
-  );
-
-  const save = async () => {
-    setBusy(true);
-    await api.saveSettings({ theme: t, content: c });
-    setBusy(false);
-    notify("Website updated — changes are live");
-  };
-
-  const reset = async () => {
-    if (!window.confirm("Reset theme & site content to the original defaults?")) return;
-    setBusy(true);
-    await api.resetSettings();
-    setBusy(false);
-    notify("Restored original theme & content");
-  };
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-5">
-      {/* theme controls */}
-      <div className="space-y-6 xl:col-span-3">
-        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-ink-900">Brand accent</h3>
-          <p className="text-xs font-semibold text-ink-400">Every button, badge and highlight on the website follows this colour.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {ACCENTS.map((a) => (
-              <button
-                key={a.hex}
-                onClick={() => setT({ ...t, accent: a.hex })}
-                className={`group flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 transition-all hover:-translate-y-0.5 ${
-                  t.accent.toLowerCase() === a.hex.toLowerCase() ? "border-ink-900 bg-ink-50" : "border-transparent bg-ink-50/60 hover:border-ink-200"
-                }`}
-              >
-                <span className="size-9 rounded-full shadow-inner transition-transform group-hover:scale-110" style={{ background: a.hex }} />
-                <span className="text-[10px] font-bold uppercase tracking-wide text-ink-500">{a.name}</span>
-              </button>
-            ))}
-            <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-ink-200 p-2.5 transition-all hover:-translate-y-0.5 hover:border-sky-400">
-              <span
-                className="relative grid size-9 place-items-center overflow-hidden rounded-full shadow-inner"
-                style={{ background: "conic-gradient(#f43f5e,#f59e0b,#10b981,#0ea5e9,#8b5cf6,#f43f5e)" }}
-              >
-                <input
-                  type="color"
-                  value={t.accent}
-                  onChange={(e) => setT({ ...t, accent: e.target.value.toUpperCase() })}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  aria-label="Custom accent colour"
-                />
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-ink-500">Custom</span>
-            </label>
-          </div>
-          <p className="mt-3 font-mono text-xs font-bold text-ink-400">
-            {t.accent} <span className="text-ink-300">— a full light-to-dark scale is generated automatically</span>
-          </p>
-        </section>
-
-        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-ink-900">Headline typeface</h3>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {(Object.keys(FONTS) as (keyof typeof FONTS)[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setT({ ...t, font: f })}
-                className={`rounded-xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${
-                  t.font === f ? "border-ink-900 bg-ink-50" : "border-ink-100 hover:border-ink-300"
-                }`}
-              >
-                <span className="block text-3xl font-extrabold text-ink-900" style={{ fontFamily: FONTS[f].stack }}>
-                  Aa
-                </span>
-                <span className="mt-1 block text-xs font-bold text-ink-500">{FONTS[f].label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-ink-900">Corner roundness</h3>
-          <div className="mt-4 flex items-center gap-4">
-            <input
-              type="range"
-              min={0}
-              max={28}
-              value={t.radius}
-              onChange={(e) => setT({ ...t, radius: Number(e.target.value) })}
-              className="flex-1 accent-sky-500"
-            />
-            <span className="w-14 text-right font-mono text-sm font-bold text-ink-700">{t.radius}px</span>
-            <span
-              className="grid h-12 w-20 place-items-center border-2 border-sky-500 bg-sky-50 text-[10px] font-bold text-sky-700"
-              style={{ borderRadius: t.radius }}
-            >
-              card
-            </span>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-ink-900">Website content</h3>
-          <p className="text-xs font-semibold text-ink-400">These fields feed the live website — phone links, WhatsApp messages and the footer.</p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Field label="Tagline (hero)">
-                <input value={c.tagline} onChange={(e) => setC({ ...c, tagline: e.target.value })} className={inputCls} />
-              </Field>
-            </div>
-            <Field label="Phone (display)">
-              <input value={c.phoneDisplay} onChange={(e) => setC({ ...c, phoneDisplay: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="Phone (dial link)" hint="With country code, e.g. +919914291112">
-              <input value={c.phoneRaw} onChange={(e) => setC({ ...c, phoneRaw: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="Instagram handle">
-              <input value={c.instagramHandle} onChange={(e) => setC({ ...c, instagramHandle: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="Instagram URL">
-              <input value={c.instagram} onChange={(e) => setC({ ...c, instagram: e.target.value })} className={inputCls} />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Office address">
-                <input value={c.address} onChange={(e) => setC({ ...c, address: e.target.value })} className={inputCls} />
-              </Field>
-            </div>
-            <div className="sm:col-span-2">
-              <Field label="WhatsApp greeting (prefilled message)">
-                <textarea value={c.waGreeting} onChange={(e) => setC({ ...c, waGreeting: e.target.value })} rows={2} className={inputCls} />
-              </Field>
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={save}
-            disabled={busy || !dirty}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-5 py-3 font-display text-sm font-extrabold text-white shadow-lg shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-600 disabled:opacity-50"
-          >
-            {busy ? "Publishing…" : "Save & publish website"}
-          </button>
-          <button onClick={reset} className="rounded-xl border border-ink-200 px-4 py-3 text-sm font-bold text-ink-600 hover:bg-ink-100">
-            Reset to defaults
-          </button>
-          {!dirty && <span className="text-xs font-bold text-emerald-600">✓ All changes published</span>}
-        </div>
-      </div>
-
-      {/* live preview */}
-      <div className="space-y-4 xl:col-span-2">
-        <div className="sticky top-24">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-400">Live preview</p>
-          <div className="dotgrid mt-2 overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm">
-            <div className="border-b border-ink-100 bg-white px-4 py-3">
-              <div className="flex items-center gap-2">
-                <LogoMark className="size-8" />
-                <span className="font-display text-sm font-extrabold text-ink-900">Apna Punjab</span>
-                <span className="ml-auto rounded-full px-3 py-1.5 text-xs font-bold text-white" style={{ background: t.accent }}>
-                  <IconPhone size={12} className="mr-1 inline" />
-                  {c.phoneDisplay}
-                </span>
-              </div>
-            </div>
-            <div className="p-5">
-              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: t.accent }}>
-                {c.tagline}
-              </p>
-              <p className="mt-2 font-display text-2xl font-extrabold leading-tight text-ink-900" style={{ fontFamily: FONTS[t.font].stack }}>
-                Ludhiana to anywhere, anytime.
-              </p>
-              <div className="mt-4 flex gap-2.5">
-                <span className="px-4 py-2.5 text-sm font-bold text-white shadow-lg" style={{ background: t.accent, borderRadius: t.radius }}>
-                  Book now
-                </span>
-                <span className="border-2 border-ink-100 px-4 py-2.5 text-sm font-bold text-ink-700" style={{ borderRadius: t.radius }}>
-                  WhatsApp us
-                </span>
-              </div>
-              <div className="mt-5 space-y-2">
-                {[92, 74, 85].map((w, i) => (
-                  <div key={i} className="h-2 rounded-full bg-ink-100" style={{ width: `${w}%` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs font-semibold leading-relaxed text-sky-800">
-            <strong className="font-extrabold">Publishing is instant.</strong> The website reads these settings live — other open
-            tabs update the moment you hit save, no redeploy needed.
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------- activity ---------------------------- */
-
-function ActivityPanel() {
-  const [rows, setRows] = useState<Activity[] | null>(null);
-  useEffect(() => {
-    api.listActivity().then(setRows);
-  }, []);
-  if (!rows) return <div className="py-24 text-center text-sm font-bold text-ink-400">Loading activity…</div>;
-  return (
-    <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm">
-      <div className="divide-y divide-ink-50">
-        {rows.length === 0 && <p className="p-6 text-sm font-semibold text-ink-400">No activity yet.</p>}
-        {rows.map((a) => (
-          <div key={a.id} className="flex items-start gap-3.5 px-5 py-3.5 transition-colors hover:bg-sky-50/50">
-            <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700">
-              <IconBolt size={14} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-extrabold text-ink-900">
-                {a.action} <span className="font-semibold text-ink-400">· {a.actor}</span>
-              </p>
-              <p className="truncate text-[13px] font-semibold text-ink-500">{a.detail}</p>
-            </div>
-            <span className="shrink-0 text-xs font-bold text-ink-300">{timeAgo(a.at)}</span>
-          </div>
+    <div className="min-h-screen bg-ink-50/70 font-body text-ink-900">
+      <Console onLogout={() => setAuthed(false)} notify={notify} />
+      <div className="pointer-events-none fixed bottom-5 right-5 z-[120] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
+        {toasts.map((t) => (
+          <Toast key={t.id} msg={t.msg} tone={t.tone} />
         ))}
       </div>
     </div>
   );
 }
 
-/* ---------------------------- security ---------------------------- */
+/* ------------------------------- login ---------------------------- */
 
-function SecurityPanel({
-  notify,
-  onLogout,
-  onResetDemo,
-}: {
-  notify: (m: string, t?: "ok" | "err") => void;
-  onLogout: () => void;
-  onResetDemo: () => void;
-}) {
-  const [cur, setCur] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
+function LoginPage({ onAuthed }: { onAuthed: () => void }) {
+  const navigate = useNavigate();
+  const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
-  const [isDefault, setIsDefault] = useState<boolean | null>(null);
-  const { content } = useSettings();
-
-  useEffect(() => {
-    api.isDefaultPassword().then(setIsDefault);
-  }, []);
-
-  const strength = Math.min(4, Math.floor(next.length / 3));
+  const [err, setErr] = useState("");
+  const [show, setShow] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    if (next !== confirm) {
-      notify("New passwords don't match", "err");
-      return;
-    }
     setBusy(true);
-    const res = await api.changePassword(cur, next);
+    setErr("");
+    const res = await backend.login(pass);
     setBusy(false);
     if (res.ok) {
-      notify("Password changed — use it next sign-in");
-      setCur("");
-      setNext("");
-      setConfirm("");
-      setIsDefault(false);
+      onAuthed();
+      navigate("/admin", { replace: true });
     } else {
-      notify(res.error ?? "Could not change password", "err");
+      setErr(res.error ?? "Login failed");
+      const card = document.getElementById("login-card");
+      if (card) {
+        card.classList.remove("shake");
+        void card.offsetWidth;
+        card.classList.add("shake");
+      }
     }
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
-      <form onSubmit={submit} className="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm">
-        <h3 className="font-display text-lg font-extrabold text-ink-900">Change admin passcode</h3>
-        <p className="text-xs font-semibold text-ink-400">Already signed in? Reset the passcode right here — no email needed.</p>
+    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-ink-950 px-4">
+      <div className="dotgrid-light absolute inset-0" aria-hidden />
+      <div className="absolute -left-32 top-1/4 h-96 w-96 rounded-full bg-sky-500/20 blur-3xl" aria-hidden />
+      <div className="absolute -right-24 bottom-10 h-80 w-80 rounded-full bg-sun-500/10 blur-3xl" aria-hidden />
 
-        {isDefault && (
-          <div className="mt-4 rounded-xl border border-sun-400/50 bg-sun-50 p-3.5 text-xs font-bold leading-relaxed text-sun-600">
-            ⚠ You're still using the default passcode <span className="font-mono">{DEFAULT_PASSWORD}</span>. Anyone with this demo
-            link knows it — set your own below.
+      <div id="login-card" className="relative w-full max-w-md rounded-3xl border border-white/10 bg-white p-8 shadow-2xl">
+        <div className="flex items-center gap-3">
+          <LogoMark className="size-12" />
+          <div>
+            <p className="font-display text-lg font-extrabold leading-tight text-ink-900">Apna Punjab</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-sky-600">Owner console</p>
           </div>
-        )}
+        </div>
 
-        <div className="mt-5 space-y-4">
-          <Field label="Current passcode">
-            <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} className={inputCls} autoComplete="current-password" />
+        <h1 className="mt-7 font-display text-3xl font-extrabold tracking-tight text-ink-900">Sign in to the CRM</h1>
+        <p className="mt-1.5 text-sm font-semibold text-ink-400">Bookings, fleet, customers and website — one desk.</p>
+
+        <form onSubmit={submit} className="mt-7 space-y-4">
+          <Field label="Admin password">
+            <div className="relative">
+              <input
+                type={show ? "text" : "password"}
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                className={inputCls}
+                placeholder="••••••••"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShow((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold uppercase tracking-wide text-sky-600"
+              >
+                {show ? "Hide" : "Show"}
+              </button>
+            </div>
           </Field>
-          <Field label="New passcode" hint="Minimum 8 characters">
-            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} autoComplete="new-password" />
-          </Field>
-          {next && (
-            <div className="flex items-center gap-2">
-              {[1, 2, 3, 4].map((i) => (
-                <span
-                  key={i}
-                  className={`h-1.5 flex-1 rounded-full transition-colors ${
-                    i <= strength ? (strength <= 1 ? "bg-rose-400" : strength === 2 ? "bg-sun-400" : "bg-emerald-400") : "bg-ink-100"
-                  }`}
-                />
+          {err && <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-bold text-rose-600">{err}</p>}
+          <button
+            type="submit"
+            disabled={busy || !pass}
+            className="w-full rounded-xl bg-sky-500 py-3.5 font-bold text-white shadow-lg shadow-sky-500/30 transition-all hover:-translate-y-0.5 hover:bg-sky-600 disabled:opacity-50"
+          >
+            {busy ? "Checking…" : "Unlock console"}
+          </button>
+        </form>
+
+        <div className="mt-5 flex items-center justify-between rounded-xl border border-dashed border-sky-300 bg-sky-50/60 px-3.5 py-2.5">
+          <p className="text-xs font-semibold text-sky-800">
+            First time? Default password <strong className="font-mono">{DEFAULT_PASSWORD}</strong>
+          </p>
+          <button type="button" onClick={() => setPass(DEFAULT_PASSWORD)} className="text-xs font-bold text-sky-600 hover:underline">
+            Fill
+          </button>
+        </div>
+
+        <Link to="/" className="mt-6 block text-center text-xs font-bold text-ink-400 transition-colors hover:text-sky-600">
+          ← Back to website
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ console --------------------------- */
+
+const NAV = [
+  { to: "/admin", label: "Dashboard", icon: IconBolt, end: true },
+  { to: "/admin/bookings", label: "Bookings", icon: IconRoute },
+  { to: "/admin/customers", label: "Customers", icon: IconUsers },
+  { to: "/admin/drivers", label: "Drivers", icon: IconClock },
+  { to: "/admin/fleet", label: "Fleet", icon: CarGlyph },
+  { to: "/admin/website", label: "Website", icon: IconSparkle },
+  { to: "/admin/settings", label: "Settings", icon: IconShield },
+];
+
+function Console({ onLogout, notify }: { onLogout: () => void; notify: Notify }) {
+  const [mobileNav, setMobileNav] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  useEffect(() => setMobileNav(false), [pathname]);
+
+  return (
+    <div className="mx-auto flex min-h-screen max-w-[1600px]">
+      {/* sidebar */}
+      <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 flex-col border-r border-ink-100 bg-white lg:flex">
+        <SidebarContent onLogout={onLogout} />
+      </aside>
+
+      {/* mobile drawer */}
+      {mobileNav && (
+        <div className="fixed inset-0 z-[70] lg:hidden">
+          <button aria-label="Close menu" onClick={() => setMobileNav(false)} className="absolute inset-0 bg-ink-950/50" />
+          <aside className="absolute inset-y-0 left-0 w-64 bg-white shadow-2xl">
+            <SidebarContent onLogout={onLogout} />
+          </aside>
+        </div>
+      )}
+
+      {/* main */}
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+        <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-ink-100 bg-white/95 px-4 backdrop-blur sm:px-6">
+          <button onClick={() => setMobileNav(true)} aria-label="Open menu" className="grid size-10 place-items-center rounded-xl border border-ink-100 text-ink-700 lg:hidden">
+            <span className="space-y-1.5">
+              <span className="block h-0.5 w-5 bg-current" />
+              <span className="block h-0.5 w-5 bg-current" />
+              <span className="block h-0.5 w-3.5 bg-current" />
+            </span>
+          </button>
+          <span className="hidden items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700 sm:inline-flex">
+            <span className="blink-dot size-1.5 rounded-full bg-emerald-500" /> Live sync on
+          </span>
+          <div className="ml-auto flex items-center gap-2.5">
+            <NotificationBell onOpen={() => setBellOpen(true)} />
+            <Link
+              to="/"
+              className="hidden rounded-xl border border-ink-200 px-3.5 py-2 text-sm font-bold text-ink-600 transition-colors hover:border-sky-300 hover:text-sky-600 sm:block"
+            >
+              View site
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 sm:p-6">
+          <AdminRoutes notify={notify} />
+        </main>
+
+        <footer className="border-t border-ink-100 px-6 py-4 text-center text-[11px] font-semibold text-ink-300">
+          Apna Punjab Cab Service · Owner console · One database, website + CRM in sync
+        </footer>
+      </div>
+
+      {bellOpen && <NotificationDrawer onClose={() => setBellOpen(false)} />}
+    </div>
+  );
+}
+
+function SidebarContent({ onLogout }: { onLogout: () => void }) {
+  return (
+    <div className="flex h-full flex-col">
+      <Link to="/admin" className="flex items-center gap-2.5 border-b border-ink-100 px-5 py-5">
+        <LogoMark className="size-10" />
+        <span className="leading-tight">
+          <span className="block font-display text-base font-extrabold text-ink-900">Apna Punjab</span>
+          <span className="block text-[9px] font-bold uppercase tracking-[0.28em] text-sky-600">Owner console</span>
+        </span>
+      </Link>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        {NAV.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold transition-all ${
+                isActive ? "bg-ink-900 text-white shadow-md" : "text-ink-500 hover:bg-ink-50 hover:text-ink-900"
+              }`
+            }
+          >
+            <n.icon size={18} />
+            {n.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="border-t border-ink-100 p-3">
+        <button
+          onClick={async () => {
+            await backend.logout();
+            onLogout();
+          }}
+          className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-rose-500 transition-colors hover:bg-rose-50"
+        >
+          <IconX size={18} /> Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminRoutes({ notify }: { notify: Notify }) {
+  return (
+    <Routes>
+      <Route index element={<DashboardPanel notify={notify} go={(tab) => (window.location.hash = "#/admin/" + tab)} />} />
+      <Route path="bookings" element={<BookingsPanel notify={notify} />} />
+      <Route path="bookings/:id" element={<BookingDetailPage notify={notify} />} />
+      <Route path="customers" element={<CustomersPanel notify={notify} />} />
+      <Route path="drivers" element={<DriversPanel notify={notify} />} />
+      <Route path="fleet" element={<FleetListPage notify={notify} />} />
+      <Route path="fleet/add" element={<VehicleFormPage notify={notify} />} />
+      <Route path="fleet/:id/edit" element={<VehicleFormPage notify={notify} />} />
+      <Route path="website" element={<WebsitePage notify={notify} />} />
+      <Route path="settings" element={<SettingsPage notify={notify} />} />
+      <Route path="*" element={<Navigate to="/admin" replace />} />
+    </Routes>
+  );
+}
+
+/* --------------------------- notifications ------------------------ */
+
+function NotificationBell({ onOpen }: { onOpen: () => void }) {
+  useRealtime();
+  const unread = backend.listNotices().filter((n) => !n.read).length;
+  return (
+    <button
+      onClick={onOpen}
+      aria-label={`Notifications (${unread} unread)`}
+      className="relative grid size-10 place-items-center rounded-xl border border-ink-100 text-ink-700 transition-colors hover:border-sky-300 hover:text-sky-600"
+    >
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M6 10a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" />
+        <path d="M10 19a2.2 2.2 0 0 0 4 0" />
+      </svg>
+      {unread > 0 && (
+        <span className="absolute -right-1 -top-1 grid min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-extrabold text-white">
+          {unread}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function NotificationDrawer({ onClose }: { onClose: () => void }) {
+  useRealtime();
+  const notices = backend.listNotices();
+  return (
+    <Modal open onClose={onClose} title="Notifications">
+      <div className="mb-3 flex justify-end">
+        <button onClick={() => backend.markAllRead()} className="text-xs font-bold text-sky-600 hover:underline">
+          Mark all read
+        </button>
+      </div>
+      <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+        {notices.length === 0 && <p className="py-8 text-center text-sm font-semibold text-ink-400">No notifications yet.</p>}
+        {notices.map((n) => (
+          <a
+            key={n.id}
+            href={n.link}
+            onClick={() => {
+              backend.markNoticeRead(n.id);
+              onClose();
+            }}
+            className={`block rounded-xl border p-3.5 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+              n.read ? "border-ink-100 bg-white" : "border-sky-200 bg-sky-50/70"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-extrabold text-ink-900">{n.title}</p>
+              {!n.read && <span className="size-2 shrink-0 rounded-full bg-sky-500" />}
+            </div>
+            <p className="mt-0.5 text-xs font-semibold leading-relaxed text-ink-500">{n.body}</p>
+            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-300">{timeAgo(n.at)}</p>
+          </a>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------- booking detail ------------------------- */
+
+function BookingDetailPage({ notify }: { notify: Notify }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  useRealtime();
+
+  const booking = id ? backend.getBooking(id) : null;
+  if (!booking) {
+    return (
+      <div className="grid place-items-center rounded-2xl border border-dashed border-ink-200 bg-white px-6 py-24 text-center">
+        <p className="font-display text-lg font-extrabold text-ink-900">Booking not found</p>
+        <p className="mt-1 text-sm font-semibold text-ink-400">It may have been deleted.</p>
+        <Link to="/admin/bookings" className="mt-4 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white">
+          ← Back to bookings
+        </Link>
+      </div>
+    );
+  }
+
+  const customer = backend.listCustomers().find((c) => c.id === booking.customerId);
+  const vehicle = backend.listVehicles({ includeUnavailable: true }).find((v) => v.id === booking.vehicleId);
+  const drivers = backend.listDrivers();
+  const history = backend.statusHistoryOf(booking.id);
+  const advance = NEXT_STEP[booking.status];
+
+  const update = (patch: Partial<typeof booking>, msg?: string) => {
+    backend.saveBooking({ ...booking, ...patch });
+    if (msg) notify(msg);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link to="/admin/bookings" className="text-xs font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700">
+            ← All bookings
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink-900">{booking.id}</h2>
+            <Pill status={booking.status} />
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${booking.source === "website" ? "bg-emerald-100 text-emerald-700" : "bg-ink-100 text-ink-600"}`}>
+              {booking.source === "website" ? "Online booking" : booking.source}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-2.5">
+          {advance && (
+            <button
+              onClick={() => {
+                if (advance.to === "enroute" && !booking.driverId) {
+                  notify("Assign a driver before starting the trip", "err");
+                  return;
+                }
+                update({ status: advance.to }, `${booking.id} → ${STATUS_META[advance.to].label}`);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-600"
+            >
+              <IconArrow size={15} /> {advance.label}
+            </button>
+          )}
+          {["pending", "confirmed", "enroute"].includes(booking.status) && (
+            <button
+              onClick={() => update({ status: "cancelled" }, `${booking.id} cancelled`)}
+              className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50"
+            >
+              Cancel
+            </button>
+          )}
+          {(booking.status === "cancelled" || booking.status === "rejected") && (
+            <button
+              onClick={() => update({ status: "confirmed" }, `${booking.id} reopened`)}
+              className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50"
+            >
+              Reopen
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        {/* journey */}
+        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm xl:col-span-2">
+          <h3 className="font-display text-base font-extrabold text-ink-900">Journey</h3>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-ink-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Pickup</p>
+              <p className="mt-1 font-display text-lg font-extrabold text-ink-900">{booking.pickup}</p>
+              <p className="text-sm font-semibold text-ink-500">{fmtDateTime(booking.pickupAt)} · {booking.passengers} pax</p>
+            </div>
+            <div className="rounded-xl bg-ink-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Drop-off</p>
+              <p className="mt-1 font-display text-lg font-extrabold text-ink-900">{booking.dropoff}</p>
+              <p className="text-sm font-semibold text-ink-500">
+                {booking.tripType === "round"
+                  ? booking.returnAt
+                    ? "Return " + fmtDateTime(booking.returnAt)
+                    : "Round trip · return TBD"
+                  : "One-way"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Vehicle</p>
+              <p className="font-bold text-ink-800">{vehicle?.name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Distance</p>
+              <p className="font-bold text-ink-800">{booking.km} km</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Fare</p>
+              <p className="font-display text-lg font-extrabold text-ink-900">{inr(booking.fare)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Payment</p>
+              <button
+                onClick={() => update({ pay: booking.pay === "paid" ? "pending" : "paid" }, booking.pay === "paid" ? "Marked unpaid" : "Payment collected")}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${booking.pay === "paid" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-sun-100 text-sun-600 hover:bg-sun-100/70"}`}
+              >
+                {booking.pay === "paid" ? "Paid" : "Pending"}
+              </button>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Assign driver</p>
+            <select
+              value={booking.driverId ?? ""}
+              onChange={(e) => update({ driverId: e.target.value || null }, e.target.value ? "Driver assigned" : "Driver unassigned")}
+              className={`${inputCls} mt-1.5`}
+            >
+              <option value="">Unassigned</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} {d.onDuty ? "· on duty" : "· off duty"}
+                </option>
               ))}
-              <span className="w-16 text-right text-[11px] font-bold text-ink-400">
-                {strength <= 1 ? "Weak" : strength === 2 ? "Okay" : "Strong"}
-              </span>
+            </select>
+          </div>
+          {booking.notes && (
+            <p className="mt-4 rounded-xl border border-sun-400/30 bg-sun-50 p-3.5 text-sm font-semibold text-ink-700">{booking.notes}</p>
+          )}
+        </section>
+
+        {/* customer + timeline */}
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Customer</h3>
+            {customer ? (
+              <>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="grid size-11 place-items-center rounded-full bg-sky-100 font-display text-base font-extrabold text-sky-700">
+                    {customer.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
+                  </span>
+                  <div>
+                    <p className="font-display text-base font-extrabold text-ink-900">{customer.name}</p>
+                    <p className="text-xs font-semibold text-ink-400">{customer.phone}{customer.email ? " · " + customer.email : ""}</p>
+                  </div>
+                </div>
+                <div className="mt-3.5 grid grid-cols-2 gap-2">
+                  <a href={`tel:${customer.phone.replace(/\s/g, "")}`} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-sky-500 py-2.5 text-sm font-bold text-white hover:bg-sky-600">
+                    <IconPhone size={14} /> Call
+                  </a>
+                  <a
+                    href={waCustomer(customer.phone, `Hi ${customer.name.split(" ")[0]} ji! This is Apna Punjab Cab Service regarding your booking ${booking.id}.`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-wa-500 py-2.5 text-sm font-bold text-white hover:bg-wa-600"
+                  >
+                    <IconWhatsApp size={14} /> WhatsApp
+                  </a>
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm font-semibold text-ink-400">Customer record not found.</p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Status timeline</h3>
+            <ol className="mt-4 space-y-0">
+              {history.map((h, i) => (
+                <li key={h.id} className="relative flex gap-3 pb-4 last:pb-0">
+                  {i < history.length - 1 && <span className="absolute left-[7px] top-5 h-full w-px bg-ink-100" />}
+                  <span className={`relative z-10 mt-1 size-[15px] shrink-0 rounded-full border-2 border-white shadow ${STATUS_META[h.to].dot}`} />
+                  <div>
+                    <p className="text-sm font-extrabold text-ink-900">
+                      {h.from === "created" ? "Booking created" : STATUS_META[h.to].label}
+                      <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-ink-300">{h.by}</span>
+                    </p>
+                    <p className="text-xs font-semibold text-ink-400">{fmtDateTime(h.at)}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- website CMS ------------------------- */
+
+function WebsitePage({ notify }: { notify: Notify }) {
+  useRealtime();
+  const saved = backend.getHero();
+  const settings = backend.getSettingsSync();
+
+  const [h, setH] = useState<HeroSection>({ ...saved });
+  const [c, setC] = useState<WebsiteSettings>({ ...settings.content });
+  const [t, setT] = useState<ThemeSettings>({ ...settings.theme });
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [cropping, setCropping] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  /* live theme preview while theme panel is open */
+  useEffect(() => {
+    if (themeOpen) applyTheme(t);
+  }, [t, themeOpen]);
+
+  const dirty =
+    JSON.stringify(h) !== JSON.stringify(saved) ||
+    JSON.stringify(c) !== JSON.stringify(settings.content) ||
+    JSON.stringify(t) !== JSON.stringify(settings.theme);
+
+  const save = () => {
+    setBusy(true);
+    setTimeout(() => {
+      backend.saveHero(h);
+      backend.saveSettings({ content: c, theme: t });
+      setBusy(false);
+      notify("Website updated — changes are live");
+    }, 350);
+  };
+
+  const ACCENTS = [
+    { name: "Sky", hex: "#0EA5E9" },
+    { name: "Royal", hex: "#2563EB" },
+    { name: "Teal", hex: "#14B8A6" },
+    { name: "Emerald", hex: "#10B981" },
+    { name: "Sunset", hex: "#F97316" },
+    { name: "Rose", hex: "#F43F5E" },
+    { name: "Saffron", hex: "#F59E0B" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink-900">Website</h2>
+          <p className="text-sm font-semibold text-ink-400">Hero section, branding and contact details — published straight to the live site.</p>
+        </div>
+        <button
+          onClick={save}
+          disabled={busy || !dirty}
+          className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all hover:-translate-y-0.5 hover:bg-sky-600 disabled:opacity-50"
+        >
+          <IconCheck size={15} /> {busy ? "Publishing…" : dirty ? "Publish changes" : "All published"}
+        </button>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-5">
+        {/* hero editor */}
+        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm xl:col-span-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Homepage hero</h3>
+            <Toggle on={h.active} onChange={(on) => setH({ ...h, active: on })} label={h.active ? "Visible" : "Hidden"} />
+          </div>
+          <div className="mt-4 space-y-4">
+            <Field label="Badge line">
+              <input value={h.badge} onChange={(e) => setH({ ...h, badge: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Headline">
+              <input value={h.title} onChange={(e) => setH({ ...h, title: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="Subtitle">
+              <textarea value={h.subtitle} onChange={(e) => setH({ ...h, subtitle: e.target.value })} rows={3} className={inputCls} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Primary CTA text">
+                <input value={h.ctaText} onChange={(e) => setH({ ...h, ctaText: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Primary CTA link" hint="tel:, https: or #/booking">
+                <input value={h.ctaLink} onChange={(e) => setH({ ...h, ctaLink: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Secondary CTA text">
+                <input value={h.cta2Text} onChange={(e) => setH({ ...h, cta2Text: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Secondary CTA link">
+                <input value={h.cta2Link} onChange={(e) => setH({ ...h, cta2Link: e.target.value })} className={inputCls} />
+              </Field>
+            </div>
+            <Field label="Promo strip text">
+              <input value={h.promo} onChange={(e) => setH({ ...h, promo: e.target.value })} className={inputCls} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Background image">
+                <div className="flex items-center gap-3">
+                  <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-ink-100 bg-ink-50">
+                    {h.imageUrl && <img src={h.imageUrl} alt="" className="h-full w-full object-cover" style={{ objectPosition: h.imagePos }} />}
+                  </div>
+                  <button onClick={() => setCropping(true)} className="rounded-xl border border-ink-200 px-3.5 py-2 text-sm font-bold text-ink-700 hover:border-sky-300 hover:text-sky-600">
+                    Upload & crop
+                  </button>
+                </div>
+              </Field>
+              <Field label="Image focus" hint="Where the camera points — left/right, up/down">
+                <div className="space-y-2 pt-1">
+                  {(["0%", "50%", "100%"] as const).map(() => null)}
+                  <input
+                    type="range" min={0} max={100}
+                    value={parseInt(h.imagePos.split("%")[0]) || 50}
+                    onChange={(e) => setH({ ...h, imagePos: `${e.target.value}% ${h.imagePos.split(" ")[1] ?? "38%"}` })}
+                    className="w-full accent-sky-500" aria-label="Horizontal focus"
+                  />
+                  <input
+                    type="range" min={0} max={100}
+                    value={parseInt((h.imagePos.split(" ")[1] ?? "38%").replace("%", "")) || 38}
+                    onChange={(e) => setH({ ...h, imagePos: `${h.imagePos.split("%")[0]}% ${e.target.value}%` })}
+                    className="w-full accent-sky-500" aria-label="Vertical focus"
+                  />
+                </div>
+              </Field>
+            </div>
+          </div>
+        </section>
+
+        {/* branding + contact */}
+        <div className="space-y-5 xl:col-span-2">
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-extrabold text-ink-900">Brand & theme</h3>
+              <button onClick={() => setThemeOpen((v) => !v)} className="text-xs font-bold text-sky-600 hover:underline">
+                {themeOpen ? "Close" : "Customise"}
+              </button>
+            </div>
+            {themeOpen && (
+              <div className="mt-4 space-y-4">
+                <div className="flex flex-wrap gap-2.5">
+                  {ACCENTS.map((a) => (
+                    <button
+                      key={a.hex}
+                      onClick={() => setT({ ...t, accent: a.hex })}
+                      title={a.name}
+                      className={`size-9 rounded-full shadow-inner transition-transform hover:scale-110 ${t.accent.toLowerCase() === a.hex.toLowerCase() ? "ring-2 ring-ink-900 ring-offset-2" : ""}`}
+                      style={{ background: a.hex }}
+                      aria-label={`Accent ${a.name}`}
+                    />
+                  ))}
+                  <label className="relative grid size-9 cursor-pointer place-items-center overflow-hidden rounded-full shadow-inner" style={{ background: "conic-gradient(#f43f5e,#f59e0b,#10b981,#0ea5e9,#8b5cf6,#f43f5e)" }}>
+                    <input type="color" value={t.accent} onChange={(e) => setT({ ...t, accent: e.target.value.toUpperCase() })} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Custom accent" />
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(FONTS) as (keyof typeof FONTS)[]).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setT({ ...t, font: f })}
+                      className={`rounded-xl border-2 p-2.5 text-left transition-all ${t.font === f ? "border-ink-900 bg-ink-50" : "border-ink-100 hover:border-ink-300"}`}
+                    >
+                      <span className="block text-2xl font-extrabold text-ink-900" style={{ fontFamily: FONTS[f].stack }}>Aa</span>
+                      <span className="mt-0.5 block truncate text-[10px] font-bold text-ink-500">{FONTS[f].label}</span>
+                    </button>
+                  ))}
+                </div>
+                <Field label={`Corner radius · ${t.radius}px`}>
+                  <input type="range" min={4} max={28} value={t.radius} onChange={(e) => setT({ ...t, radius: Number(e.target.value) })} className="w-full accent-sky-500" />
+                </Field>
+                <button onClick={() => applyTheme()} className="text-xs font-bold text-ink-400 hover:text-ink-700">
+                  Reset preview to saved theme
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Contact details</h3>
+            <p className="text-xs font-semibold text-ink-400">Used in the header, footer, CTAs and WhatsApp links site-wide.</p>
+            <div className="mt-4 space-y-3.5">
+              <Field label="Tagline">
+                <input value={c.tagline} onChange={(e) => setC({ ...c, tagline: e.target.value })} className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Phone (display)">
+                  <input value={c.phoneDisplay} onChange={(e) => setC({ ...c, phoneDisplay: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label="Phone (dial)">
+                  <input value={c.phoneRaw} onChange={(e) => setC({ ...c, phoneRaw: e.target.value })} className={inputCls} placeholder="+91…" />
+                </Field>
+              </div>
+              <Field label="Email">
+                <input value={c.email} onChange={(e) => setC({ ...c, email: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Instagram handle">
+                <input value={c.instagramHandle} onChange={(e) => setC({ ...c, instagramHandle: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Address">
+                <input value={c.address} onChange={(e) => setC({ ...c, address: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="WhatsApp greeting">
+                <input value={c.waGreeting} onChange={(e) => setC({ ...c, waGreeting: e.target.value })} className={inputCls} />
+              </Field>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {cropping && (
+        <ImageCropper
+          aspect={ASPECTS.hero}
+          title="Crop hero background"
+          onConfirm={(url) => {
+            setH({ ...h, imageUrl: url });
+            setCropping(false);
+          }}
+          onClose={() => setCropping(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- settings --------------------------- */
+
+function SettingsPage({ notify }: { notify: Notify }) {
+  useRealtime();
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [pwErr, setPwErr] = useState("");
+  const [isDefault, setIsDefault] = useState(true);
+  const [perm, setPerm] = useState<string>(() => (typeof Notification !== "undefined" ? Notification.permission : "unsupported"));
+  const [cfg, setCfg] = useState<BackendConfig>({ ...backend.getSettingsSync().backend });
+
+  useEffect(() => {
+    backend.isDefaultPassword().then(setIsDefault);
+  }, []);
+
+  const changePw = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (next !== confirm) {
+      setPwErr("New passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setPwErr("");
+    const res = await backend.changePassword(cur, next);
+    setBusy(false);
+    if (res.ok) {
+      setCur("");
+      setNext("");
+      setConfirm("");
+      setIsDefault(false);
+      notify("Password updated");
+    } else {
+      setPwErr(res.error ?? "Could not change password");
+    }
+  };
+
+  const strength = next.length === 0 ? 0 : next.length < 8 ? 1 : next.length < 12 ? 2 : 3;
+
+  const enablePush = async () => {
+    if (typeof Notification === "undefined") {
+      notify("This browser does not support notifications", "err");
+      return;
+    }
+    const p = await Notification.requestPermission();
+    setPerm(p);
+    if (p === "granted") {
+      backend.registerDevice(navigator.userAgent.includes("Mobile") ? "Admin phone" : "Admin browser");
+      notify("Push enabled on this device");
+      backend.testNotification();
+    } else {
+      notify("Permission not granted", "err");
+    }
+  };
+
+  const devices = backend.listDevices();
+  const s = backend.getSettingsSync();
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink-900">Settings</h2>
+        <p className="text-sm font-semibold text-ink-400">Security, push notifications and the data source.</p>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        {/* security */}
+        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+          <h3 className="font-display text-base font-extrabold text-ink-900">Security</h3>
+          {isDefault && (
+            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-sun-400/40 bg-sun-50 p-3.5">
+              <IconShield size={17} className="mt-0.5 shrink-0 text-sun-600" />
+              <p className="text-xs font-semibold leading-relaxed text-ink-700">
+                You are still using the default password <strong className="font-mono">{DEFAULT_PASSWORD}</strong>. Change it below — it takes ten seconds.
+              </p>
             </div>
           )}
-          <Field label="Repeat new passcode">
-            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} autoComplete="new-password" />
-          </Field>
-        </div>
-
-        <button
-          type="submit"
-          disabled={busy || !cur || next.length < 8 || next !== confirm}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-ink-900 px-5 py-3 text-sm font-extrabold text-white transition-all hover:-translate-y-0.5 hover:bg-ink-800 disabled:opacity-50"
-        >
-          <IconShield size={16} /> {busy ? "Updating…" : "Update passcode"}
-        </button>
-      </form>
-
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-ink-900">Session</h3>
-          <div className="mt-3 space-y-2 text-sm font-semibold text-ink-600">
-            <p className="flex justify-between"><span>Status</span><span className="inline-flex items-center gap-1.5 font-extrabold text-emerald-600"><span className="blink-dot size-2 rounded-full bg-emerald-500" /> Active · 12-hour session</span></p>
-            <p className="flex justify-between"><span>Business line</span><span className="font-extrabold text-ink-900">{content.phoneDisplay}</span></p>
-            <p className="flex justify-between"><span>Data storage</span><span className="font-extrabold text-ink-900">On-device database (versioned)</span></p>
+          <form onSubmit={changePw} className="mt-4 space-y-3.5">
+            <Field label="Current password">
+              <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} className={inputCls} />
+            </Field>
+            <Field label="New password" hint="Minimum 8 characters">
+              <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} />
+            </Field>
+            {next && (
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-100">
+                  <div
+                    className={`h-full rounded-full transition-all ${strength === 1 ? "w-1/3 bg-rose-400" : strength === 2 ? "w-2/3 bg-sun-500" : "w-full bg-emerald-500"}`}
+                  />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                  {strength === 1 ? "Weak" : strength === 2 ? "Good" : "Strong"}
+                </span>
+              </div>
+            )}
+            <Field label="Confirm new password">
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} />
+            </Field>
+            {pwErr && <p className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-bold text-rose-600">{pwErr}</p>}
+            <button type="submit" disabled={busy || !cur || !next || !confirm} className="rounded-xl bg-ink-900 px-5 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50">
+              {busy ? "Updating…" : "Update password"}
+            </button>
+          </form>
+          <div className="mt-5 border-t border-ink-100 pt-4 text-xs font-semibold text-ink-400">
+            <p>Sessions last 12 hours · last password change: {s.security.changedAt ? fmtDateTime(s.security.changedAt) : "never (default)"}</p>
           </div>
-          <button onClick={onLogout} className="mt-4 w-full rounded-xl border border-rose-200 py-3 text-sm font-extrabold text-rose-600 transition-colors hover:bg-rose-50">
-            Sign out of this device
-          </button>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
-          <h3 className="font-display text-lg font-extrabold text-rose-600">Danger zone</h3>
-          <p className="mt-1 text-xs font-semibold text-ink-400">
-            Wipe every booking, customer, driver and setting — and restore the fresh demo seed. Useful before showing the site to
-            someone new.
-          </p>
-          <button
-            onClick={async () => {
-              if (!window.confirm("Reset ALL demo data? Bookings, customers, drivers and theme will be reseeded.")) return;
-              await api.resetDemo();
-              onResetDemo();
-            }}
-            className="mt-4 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-extrabold text-white transition-all hover:-translate-y-0.5 hover:bg-rose-600"
-          >
-            Reset demo data
-          </button>
-        </div>
+        <div className="space-y-5">
+          {/* push notifications */}
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Push notifications</h3>
+            <p className="text-xs font-semibold text-ink-400">
+              Every new website booking pings all registered admin devices instantly. In production this flows through the Firebase Cloud Messaging edge function.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              {perm === "granted" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                  <IconCheck size={13} /> Push enabled
+                </span>
+              ) : (
+                <button onClick={enablePush} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 hover:bg-sky-600">
+                  <IconBolt size={15} /> Enable push on this device
+                </button>
+              )}
+              <button onClick={() => backend.testNotification()} className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50">
+                Send test
+              </button>
+            </div>
+            {devices.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">Registered devices</p>
+                {devices.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between rounded-xl bg-ink-50 px-3.5 py-2.5">
+                    <div>
+                      <p className="text-sm font-bold text-ink-800">{d.label}</p>
+                      <p className="font-mono text-[10px] text-ink-400">{d.token.slice(0, 18)}… · {timeAgo(d.createdAt)}</p>
+                    </div>
+                    <button onClick={() => backend.removeDevice(d.id)} className="text-xs font-bold text-rose-500 hover:text-rose-600">
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
+          {/* backend / data source */}
+          <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-ink-900">Data source</h3>
+            <p className="text-xs font-semibold text-ink-400">
+              Local demo database ships with this build. Point the console at your Supabase project to go live — schema in <code className="rounded bg-ink-100 px-1 font-mono">/supabase/schema.sql</code>.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {(["local", "supabase"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setCfg({ ...cfg, mode: m })}
+                  className={`rounded-xl border-2 p-3 text-left transition-all ${cfg.mode === m ? "border-sky-500 bg-sky-50/60" : "border-ink-100 hover:border-ink-300"}`}
+                >
+                  <p className="text-sm font-extrabold text-ink-900">{m === "local" ? "Local demo DB" : "Supabase"}</p>
+                  <p className="text-[11px] font-semibold text-ink-400">{m === "local" ? "Browser storage + realtime tabs" : "PostgreSQL + Realtime + Storage"}</p>
+                </button>
+              ))}
+            </div>
+            {cfg.mode === "supabase" && (
+              <div className="mt-3 space-y-3">
+                <Field label="Project URL">
+                  <input value={cfg.url} onChange={(e) => setCfg({ ...cfg, url: e.target.value })} className={inputCls} placeholder="https://xxxx.supabase.co" />
+                </Field>
+                <Field label="Anon / public key">
+                  <input value={cfg.anonKey} onChange={(e) => setCfg({ ...cfg, anonKey: e.target.value })} className={inputCls} placeholder="eyJhbGciOi…" />
+                </Field>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                backend.saveSettings({ backend: cfg });
+                if (cfg.mode === "supabase" && !cfg.url) {
+                  notify("Supabase selected — add credentials to connect", "err");
+                } else {
+                  notify(cfg.mode === "supabase" ? "Supabase connected — realtime channels active" : "Using local demo database");
+                }
+              }}
+              className="mt-4 rounded-xl bg-ink-900 px-4 py-2.5 text-sm font-bold text-white hover:-translate-y-0.5"
+            >
+              Save data source
+            </button>
+          </section>
+
+          {/* danger zone */}
+          <section className="rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-base font-extrabold text-rose-600">Danger zone</h3>
+            <p className="mt-1 text-xs font-semibold text-ink-400">Reseed the demo database — bookings, customers and settings return to factory state.</p>
+            <button
+              onClick={async () => {
+                if (!window.confirm("Reset ALL demo data? This cannot be undone.")) return;
+                await backend.resetAll();
+                notify("Demo data reseeded", "err");
+              }}
+              className="mt-3 rounded-xl border border-rose-300 px-4 py-2.5 text-sm font-bold text-rose-600 transition-colors hover:bg-rose-50"
+            >
+              Reset demo data
+            </button>
+          </section>
+        </div>
       </div>
     </div>
   );

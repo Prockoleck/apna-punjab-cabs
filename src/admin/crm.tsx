@@ -4,10 +4,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  api,
+  backend as api,
   calcFare,
   type Booking,
-  type BookingStatus,
   type Customer,
   type Driver,
   type PayStatus,
@@ -15,7 +14,7 @@ import {
   type Stats,
   type TripType,
   type Vehicle,
-} from "../lib/db";
+} from "../lib/backend";
 import { ROUTES } from "../data";
 import {
   Empty,
@@ -46,17 +45,23 @@ type Notify = (msg: string, tone?: "ok" | "err") => void;
 
 /* ------------------------------ hooks ----------------------------- */
 
-function useAsync<T>(fn: () => Promise<T>) {
+function useAsync<T>(fn: () => T | Promise<T>) {
   const [data, setData] = useState<T | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let live = true;
-    fn().then((d) => live && setData(d));
+    Promise.resolve(fn()).then((d) => live && setData(d));
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
+  /* realtime: refresh whenever the database changes (any tab) */
+  useEffect(() => {
+    const sync = () => setTick((t) => t + 1);
+    window.addEventListener("apc:db", sync);
+    return () => window.removeEventListener("apc:db", sync);
+  }, []);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { data, setData, reload };
 }
@@ -79,9 +84,9 @@ export function DashboardPanel({ go }: { notify: Notify; go: (tab: string) => vo
   const max = Math.max(...stats.days.map((d) => d.total), 1);
   const kpis = [
     { label: "Bookings today", value: String(stats.todayCount), icon: <IconBolt size={18} />, tone: "bg-sky-500" },
-    { label: "Need action", value: String(stats.pending), icon: <IconClock size={18} />, tone: "bg-sun-500" },
+    { label: "Pending action", value: String(stats.pendingCount), icon: <IconClock size={18} />, tone: "bg-sun-500" },
     { label: "Revenue this month", value: inr(stats.monthRevenue), icon: <IconRupee size={18} />, tone: "bg-emerald-500" },
-    { label: "Drivers on duty", value: `${stats.onDuty}/${stats.driversTotal}`, icon: <IconUsers size={18} />, tone: "bg-ink-800" },
+    { label: "Drivers on duty", value: `${stats.driversOnDuty}/${stats.driversTotal}`, icon: <IconUsers size={18} />, tone: "bg-ink-800" },
   ];
 
   return (
@@ -177,7 +182,7 @@ export function DashboardPanel({ go }: { notify: Notify; go: (tab: string) => vo
             <div key={b.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
               <span className="font-mono text-xs font-bold text-ink-400">{b.id}</span>
               <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-800">{b.route}</span>
-              <span className="text-sm font-semibold text-ink-500">{fmtDateTime(b.date)}</span>
+              <span className="text-sm font-semibold text-ink-500">{fmtDateTime(b.pickupAt)}</span>
               <span className="text-sm font-extrabold text-ink-900">{inr(b.fare)}</span>
               <Pill status={b.status} />
             </div>
@@ -197,14 +202,18 @@ const blankBooking = (): Booking => ({
   customerId: "",
   driverId: null,
   vehicleId: "dzire",
-  route: ROUTES[0].name.startsWith("Delhi") ? "Ludhiana → Delhi · IGI Airport" : `Ludhiana → ${ROUTES[0].name}`,
+  route: "Ludhiana → " + ROUTES[0].name,
+  pickup: "Ludhiana",
+  dropoff: ROUTES[0].name.split(" ·")[0],
   km: ROUTES[0].km,
   tripType: "one-way",
-  date: new Date(Date.now() + 3600 * 1000).toISOString(),
-  status: "new",
+  pickupAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+  returnAt: null,
+  passengers: 2,
+  status: "pending",
   fare: 0,
   pay: "pending",
-  source: "phone",
+  source: "admin",
   notes: "",
   createdAt: new Date().toISOString(),
 });
@@ -319,7 +328,7 @@ export function BookingsPanel({ notify, initialStatus }: { notify: Notify; initi
                         {b.km} km · {b.tripType === "round" ? "round trip" : "one-way"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink-600">{fmtDateTime(b.date)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink-600">{fmtDateTime(b.pickupAt)}</td>
                     <td className="px-4 py-3 font-semibold text-ink-600">{vehicleName(b.vehicleId)}</td>
                     <td className="px-4 py-3 font-extrabold text-ink-900">{inr(b.fare)}</td>
                     <td className="px-4 py-3"><Pill status={b.status} /></td>
@@ -517,8 +526,8 @@ function BookingForm({
         <Field label="Pickup date & time">
           <input
             type="datetime-local"
-            value={toLocalInput(b.date)}
-            onChange={(e) => e.target.value && set("date", new Date(e.target.value).toISOString())}
+            value={toLocalInput(b.pickupAt)}
+            onChange={(e) => e.target.value && set("pickupAt", new Date(e.target.value).toISOString())}
             className={inputCls}
           />
         </Field>
@@ -597,8 +606,8 @@ function BookingForm({
             {advance && (
               <button
                 onClick={async () => {
-                  const nb = { ...b, fare: shownFare, status: advance.to, driverId: advance.to === "assigned" && !b.driverId ? b.driverId : b.driverId };
-                  if (advance.to === "assigned" && !b.driverId) {
+                  const nb = { ...b, fare: shownFare, status: advance.to };
+                  if (advance.to === "enroute" && !b.driverId) {
                     notify("Assign a driver first", "err");
                     return;
                   }
@@ -612,7 +621,7 @@ function BookingForm({
                 <IconArrow size={15} /> {advance.label}
               </button>
             )}
-            {["new", "confirmed", "assigned"].includes(b.status) && (
+            {["pending", "confirmed", "enroute"].includes(b.status) && (
               <button
                 onClick={async () => {
                   setBusy(true);
@@ -803,7 +812,7 @@ export function CustomersPanel({ notify }: { notify: Notify }) {
               <div key={b.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
                 <span className="font-mono text-xs font-bold text-ink-400">{b.id}</span>
                 <span className="min-w-0 flex-1 truncate font-bold text-ink-700">{b.route}</span>
-                <span className="text-xs font-semibold text-ink-400">{fmtDate(b.date)}</span>
+                <span className="text-xs font-semibold text-ink-400">{fmtDate(b.pickupAt)}</span>
                 <span className="font-extrabold text-ink-900">{inr(b.fare)}</span>
                 <Pill status={b.status} />
               </div>
@@ -1043,6 +1052,10 @@ const blankVehicle = (): Vehicle => ({
   base: 300,
   cityFrom: 199,
   available: true,
+  description: "",
+  transmission: "Manual",
+  fuel: "Petrol",
+  features: ["AC"],
   img: "",
   tone: TONES[0].cls,
   ribbon: "",
