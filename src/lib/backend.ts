@@ -888,6 +888,8 @@ function notifyAdmins(title: string, body: string, link: string) {
 
 /* ======================== Supabase helpers ======================== */
 
+const VAPID_PUBLIC_KEY = "a5-bLDFugSwMf6UZ7i-16agJ3K0ldxJBESqTYggUidooegyLl2Zedjj52IL9UFRYUTk4VeRRxrKVe4RAHF7ryA";
+
 let sbClient: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient | null {
@@ -1538,29 +1540,57 @@ export const backend = {
     return [...getDb().devices];
   },
 
-  registerDevice(label: string): Device {
+  async registerDevice(label: string): Promise<Device | null> {
     const db = getDb();
-    const d: Device = { id: uid(), token: "fcm_" + uid() + uid(), label, createdAt: iso(new Date()) };
+    // Get real push subscription from the browser
+    let endpoint = "";
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY,
+      });
+      endpoint = sub.endpoint;
+    } catch (err) {
+      console.warn("[apc] Push subscribe failed", err);
+      return null;
+    }
+    if (!endpoint) return null;
+
+    // Dedup: remove existing device with same endpoint
+    const existing = db.devices.find((d) => d.token === endpoint);
+    if (existing) return existing;
+
+    const d: Device = { id: uid(), token: endpoint, label, createdAt: iso(new Date()) };
     db.devices.push(d);
     log("Device registered", label + " · push enabled");
     persist();
 
     const sb = getSupabase();
     if (sb) {
-      sbFire(sb.from("notification_devices").insert(appDevice(d)), "registerDevice");
+      sbFire(sb.from("notification_devices").upsert(appDevice(d), { onConflict: "fcm_token" }), "registerDevice");
     }
     return d;
   },
 
-  removeDevice(id: string) {
+  async removeDevice(id: string) {
     const db = getDb();
+    const device = db.devices.find((d) => d.id === id);
+    // Unsubscribe from push if removing the current device
+    if (device) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub && sub.endpoint === device.token) await sub.unsubscribe();
+      } catch { /* ignore */ }
+    }
     db.devices = db.devices.filter((d) => d.id !== id);
     log("Device removed", "Push device unregistered");
     persist();
 
     const sb = getSupabase();
-    if (sb) {
-      sbFire(sb.from("notification_devices").delete().eq("id", id), "removeDevice");
+    if (sb && device) {
+      sbFire(sb.from("notification_devices").delete().eq("fcm_token", device.token), "removeDevice");
     }
   },
 

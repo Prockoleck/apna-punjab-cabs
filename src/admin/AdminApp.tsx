@@ -864,9 +864,13 @@ function SettingsPage({ notify }: { notify: Notify }) {
     const p = await Notification.requestPermission();
     setPerm(p);
     if (p === "granted") {
-      backend.registerDevice(navigator.userAgent.includes("Mobile") ? "Admin phone" : "Admin browser");
-      notify("Push enabled on this device");
-      backend.testNotification();
+      const device = await backend.registerDevice(navigator.userAgent.includes("Mobile") ? "Admin phone" : "Admin browser");
+      if (device) {
+        notify("Push enabled on this device");
+        backend.testNotification();
+      } else {
+        notify("Push subscription failed — try again", "err");
+      }
     } else {
       notify("Permission not granted", "err");
     }

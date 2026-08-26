@@ -128,14 +128,9 @@ serve(async (req) => {
       timeZone: "Asia/Kolkata",
     });
 
-    const message = {
-      notification: {
-        title: "🚗 New Booking Received",
-        body: `${customer?.name ?? "A customer"} booked ${vehicle?.name ?? "a cab"}. Pickup: ${booking.pickup} → ${booking.dropoff} · ${when}`,
-      },
-      data: { booking_id: booking.id, click_action: `#/admin/bookings/${booking.id}` },
-      android: { priority: "high" },
-    };
+    const title = "🚗 New Booking Received";
+    const body = `${customer?.name ?? "A customer"} booked ${vehicle?.name ?? "a cab"}. Pickup: ${booking.pickup} → ${booking.dropoff} · ${when}`;
+    const data = { booking_id: booking.id, click_action: `#/admin/bookings/${booking.id}` };
 
     const token = await googleAccessToken();
     const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!;
@@ -146,7 +141,16 @@ serve(async (req) => {
         fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ message: { ...message, token: d.fcm_token } }),
+          body: JSON.stringify({
+            message: {
+              token: d.fcm_token,
+              webpush: {
+                headers: { TTL: "86400" },
+                notification: { title, body, icon: "/icon-512.png", data, tag: `booking-${booking.id}`, renotify: true },
+              },
+              android: { priority: "high", notification: { title, body, tag: `booking-${booking.id}` } },
+            },
+          }),
         }).then(async (r) => {
           if (!r.ok) throw new Error(`FCM ${r.status}: ${await r.text()}`);
           return d.label;
