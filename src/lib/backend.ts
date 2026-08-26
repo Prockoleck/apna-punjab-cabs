@@ -888,7 +888,7 @@ function notifyAdmins(title: string, body: string, link: string) {
 
 /* ======================== Supabase helpers ======================== */
 
-const VAPID_PUBLIC_KEY = "a5-bLDFugSwMf6UZ7i-16agJ3K0ldxJBESqTYggUidooegyLl2Zedjj52IL9UFRYUTk4VeRRxrKVe4RAHF7ryA";
+const VAPID_PUBLIC_KEY = "BACMhB7kzFH5mYSk0_1ejpaCYNNvlzRkFn4R5TRxzhC9F6w4_K8-X5AxsrE7l56rqi3QtCMwSAOgsw8gc5l77VE";
 
 let sbClient: SupabaseClient | null = null;
 
