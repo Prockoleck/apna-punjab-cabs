@@ -934,15 +934,9 @@ function SettingsPage({ notify }: { notify: Notify }) {
               Every new website booking pings all registered admin devices instantly. In production this flows through the Firebase Cloud Messaging edge function.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
-              {perm === "granted" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                  <IconCheck size={13} /> Push enabled
-                </span>
-              ) : (
-                <button onClick={enablePush} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 hover:bg-sky-600">
-                  <IconBolt size={15} /> Enable push on this device
-                </button>
-              )}
+              <button onClick={enablePush} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg ${perm === "granted" ? "bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-600" : "bg-sky-500 text-white shadow-sky-500/25 hover:bg-sky-600"}`}>
+                {perm === "granted" ? <><IconCheck size={15} /> Re-register this device</> : <><IconBolt size={15} /> Enable push on this device</>}
+              </button>
               <button onClick={() => backend.testNotification()} className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50">
                 Send test
               </button>
