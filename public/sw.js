@@ -1,5 +1,5 @@
 /* Apna Punjab CRM — service worker: app-shell cache for the PWA. */
-const CACHE = "apc-v1";
+const CACHE = "apc-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
