@@ -726,6 +726,10 @@ export function getDb(): DB {
       const parsed = JSON.parse(raw) as DB;
       if (parsed.settings && parsed.settings.version === 2) {
         cache = parsed;
+        // Auto-load from Supabase if mode is supabase and data not yet loaded
+        if (parsed.settings.backend.mode === "supabase" && parsed.settings.backend.url && !sbLoaded) {
+          setTimeout(() => loadFromSupabase(), 50);
+        }
         return cache;
       }
     }
@@ -734,6 +738,10 @@ export function getDb(): DB {
   }
   cache = seed();
   persist();
+  // Auto-load from Supabase if mode is supabase
+  if (cache.settings.backend.mode === "supabase" && cache.settings.backend.url) {
+    setTimeout(() => loadFromSupabase(), 50);
+  }
   return cache;
 }
 
