@@ -252,7 +252,229 @@ export function tripSpanHours(km: number, tripType: TripType, returnAt: string |
 
 const ARROW = String.fromCharCode(8594);
 
-/* ------------------------------ seed ------------------------------ */
+/* ======================== column mapping ======================== */
+
+function sbVehicle(r: Record<string, unknown>): Vehicle {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    tag: r.tag as string,
+    seats: r.seats as string,
+    bags: r.bags as string,
+    perKm: Number(r.per_km),
+    base: Number(r.base_fare),
+    cityFrom: Number(r.city_from),
+    available: r.available as boolean,
+    archived: r.archived as boolean,
+    description: (r.description as string) || "",
+    transmission: (r.transmission as string) || "Manual",
+    fuel: (r.fuel as string) || "Petrol",
+    features: (r.features as string[]) || [],
+    img: "",
+    tone: (r.tone as string) || "from-sky-100 to-sky-200",
+    ribbon: (r.ribbon as string) || "",
+  };
+}
+
+function appVehicle(v: Vehicle): Record<string, unknown> {
+  return {
+    id: v.id,
+    name: v.name,
+    tag: v.tag,
+    seats: v.seats,
+    bags: v.bags,
+    per_km: v.perKm,
+    base_fare: v.base,
+    city_from: v.cityFrom,
+    available: v.available,
+    archived: v.archived ?? false,
+    description: v.description,
+    transmission: v.transmission,
+    fuel: v.fuel,
+    features: v.features,
+    tone: v.tone,
+    ribbon: v.ribbon,
+  };
+}
+
+function sbVehicleImage(r: Record<string, unknown>): VehicleImage {
+  return {
+    id: r.id as string,
+    vehicleId: r.vehicle_id as string,
+    url: r.url as string,
+    alt: (r.alt as string) || "",
+    isPrimary: r.is_primary as boolean,
+    sortOrder: r.sort_order as number,
+  };
+}
+
+function appVehicleImage(im: VehicleImage): Record<string, unknown> {
+  return {
+    id: im.id || undefined,
+    vehicle_id: im.vehicleId,
+    url: im.url,
+    alt: im.alt,
+    is_primary: im.isPrimary,
+    sort_order: im.sortOrder,
+  };
+}
+
+function sbCustomer(r: Record<string, unknown>): Customer {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    phone: r.phone as string,
+    email: (r.email as string) || undefined,
+    altPhone: (r.alt_phone as string) || undefined,
+    area: (r.area as string) || "",
+    notes: (r.notes as string) || "",
+    createdAt: r.created_at as string,
+  };
+}
+
+function appCustomer(c: Customer): Record<string, unknown> {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email || null,
+    alt_phone: c.altPhone || null,
+    area: c.area,
+    notes: c.notes,
+  };
+}
+
+function sbDriver(r: Record<string, unknown>): Driver {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    phone: r.phone as string,
+    vehicleId: (r.vehicle_id as string) || "",
+    onDuty: r.on_duty as boolean,
+    rating: Number(r.rating),
+    trips: r.trips as number,
+  };
+}
+
+function appDriver(d: Driver): Record<string, unknown> {
+  return {
+    id: d.id,
+    name: d.name,
+    phone: d.phone,
+    vehicle_id: d.vehicleId || null,
+    on_duty: d.onDuty,
+    rating: d.rating,
+    trips: d.trips,
+  };
+}
+
+function sbBooking(r: Record<string, unknown>): Booking {
+  return {
+    id: r.id as string,
+    customerId: r.customer_id as string,
+    driverId: (r.driver_id as string) || null,
+    vehicleId: r.vehicle_id as string,
+    route: (r.route as string) || "",
+    pickup: r.pickup as string,
+    dropoff: r.dropoff as string,
+    km: r.km as number,
+    tripType: r.trip_type as TripType,
+    pickupAt: r.pickup_at as string,
+    returnAt: (r.return_at as string) || null,
+    passengers: (r.passengers as number) || 2,
+    status: r.status as BookingStatus,
+    fare: Number(r.fare),
+    pay: r.pay_status as PayStatus,
+    source: (r.source as Source) || "website",
+    notes: (r.notes as string) || "",
+    createdAt: r.created_at as string,
+  };
+}
+
+function appBooking(b: Booking): Record<string, unknown> {
+  return {
+    id: b.id,
+    customer_id: b.customerId,
+    driver_id: b.driverId || null,
+    vehicle_id: b.vehicleId,
+    pickup: b.pickup,
+    dropoff: b.dropoff,
+    km: b.km,
+    trip_type: b.tripType,
+    pickup_at: b.pickupAt,
+    return_at: b.returnAt,
+    passengers: b.passengers,
+    status: b.status,
+    fare: b.fare,
+    pay_status: b.pay,
+    source: b.source,
+    notes: b.notes,
+  };
+}
+
+function sbStatusEvent(r: Record<string, unknown>): StatusEvent {
+  return {
+    id: r.id as string,
+    bookingId: r.booking_id as string,
+    at: r.changed_at as string,
+    from: (r.from_status as BookingStatus | "created") || "created",
+    to: r.to_status as BookingStatus,
+    by: (r.changed_by as string) || "Admin",
+  };
+}
+
+function sbHero(r: Record<string, unknown>): HeroSection {
+  return {
+    id: r.id as string,
+    active: r.active as boolean,
+    badge: (r.badge as string) || "",
+    title: r.title as string,
+    subtitle: (r.subtitle as string) || "",
+    ctaText: (r.cta_text as string) || "Call now",
+    ctaLink: (r.cta_link as string) || "tel:+919914291112",
+    cta2Text: (r.cta2_text as string) || "",
+    cta2Link: (r.cta2_link as string) || "#/booking",
+    promo: (r.promo as string) || "",
+    imageUrl: (r.image_url as string) || "",
+    imagePos: (r.image_pos as string) || "50% 38%",
+    updatedAt: r.updated_at as string,
+  };
+}
+
+function appHero(h: HeroSection): Record<string, unknown> {
+  return {
+    id: h.id,
+    active: h.active,
+    badge: h.badge,
+    title: h.title,
+    subtitle: h.subtitle,
+    cta_text: h.ctaText,
+    cta_link: h.ctaLink,
+    cta2_text: h.cta2Text,
+    cta2_link: h.cta2Link,
+    promo: h.promo,
+    image_url: h.imageUrl,
+    image_pos: h.imagePos,
+  };
+}
+
+function sbDevice(r: Record<string, unknown>): Device {
+  return {
+    id: r.id as string,
+    token: r.fcm_token as string,
+    label: (r.label as string) || "Admin device",
+    createdAt: r.created_at as string,
+  };
+}
+
+function appDevice(d: Device): Record<string, unknown> {
+  return {
+    fcm_token: d.token,
+    label: d.label,
+  };
+}
+
+/* ======================== seed ======================== */
 
 function seed(): DB {
   const vehicles: Vehicle[] = [
@@ -469,7 +691,11 @@ function seed(): DB {
         waGreeting: "Hi Apna Punjab Cab Service! I'd like to book a cab.",
       },
       security: { salt: uid() + uid(), hash: null, changedAt: null },
-      backend: { mode: "local", url: "", anonKey: "" },
+      backend: {
+        mode: "local",
+        url: "https://qzgvvfywjmspbbqglpdx.supabase.co",
+        anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6Z3Z2Znl3am1zcGJicWdscGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3MzM4OTgsImV4cCI6MjEwMzMwOTg5OH0.WYA6SVp_qxGfPwYUt5BuLKeyrw7Yzwr8k5E0dgklruA",
+      },
       seededAt: iso(new Date()),
       version: 2,
     },
@@ -487,7 +713,7 @@ function seed(): DB {
   };
 }
 
-/* --------------------------- storage engine ------------------------ */
+/* ======================== storage engine ======================== */
 
 let cache: DB | null = null;
 let bc: BroadcastChannel | null = null;
@@ -572,7 +798,7 @@ function log(action: string, detail: string, actor = "Admin") {
   if (db.activity.length > 150) db.activity.length = 150;
 }
 
-/* ----------------------------- auth ------------------------------- */
+/* ======================== auth ======================== */
 
 async function hashPass(pass: string, salt: string): Promise<string> {
   const text = salt + "::apc::" + pass;
@@ -595,7 +821,7 @@ async function hashPass(pass: string, salt: string): Promise<string> {
   return h1.toString(16) + h2.toString(16);
 }
 
-/* ----------------------- availability engine ----------------------- */
+/* ======================== availability engine ======================== */
 
 const ACTIVE: BookingStatus[] = ["pending", "confirmed", "enroute"];
 
@@ -622,7 +848,7 @@ function findConflict(
   return null;
 }
 
-/* --------------------------- notifications ------------------------- */
+/* ======================== notifications ======================== */
 
 /** Secondary event — never allowed to fail the primary booking write. */
 function notifyAdmins(title: string, body: string, link: string) {
@@ -652,7 +878,74 @@ function notifyAdmins(title: string, body: string, link: string) {
   }
 }
 
-/* ------------------------------- API ------------------------------ */
+/* ======================== Supabase helpers ======================== */
+
+let sbClient: SupabaseClient | null = null;
+
+export function getSupabase(): SupabaseClient | null {
+  const cfg = getDb().settings.backend;
+  if (cfg.mode !== "supabase" || !cfg.url || !cfg.anonKey) return null;
+  if (!sbClient) sbClient = createClient(cfg.url, cfg.anonKey);
+  return sbClient;
+}
+
+let sbLoaded = false;
+let sbLoading = false;
+
+async function loadFromSupabase() {
+  const sb = getSupabase();
+  if (!sb || sbLoaded || sbLoading) return;
+  sbLoading = true;
+  try {
+    const db = getDb();
+
+    const [vehRes, imgRes, custRes, drvRes, bkRes, histRes, heroRes, devRes] = await Promise.all([
+      sb.from("vehicles").select("*"),
+      sb.from("vehicle_images").select("*").order("sort_order"),
+      sb.from("customers").select("*"),
+      sb.from("drivers").select("*"),
+      sb.from("bookings").select("*").order("pickup_at", { ascending: false }),
+      sb.from("booking_status_history").select("*").order("changed_at", { ascending: false }),
+      sb.from("hero_sections").select("*").eq("id", "HERO-1").single(),
+      sb.from("notification_devices").select("*"),
+    ]);
+
+    if (vehRes.data) db.vehicles = vehRes.data.map(sbVehicle);
+    if (imgRes.data) db.vehicleImages = imgRes.data.map(sbVehicleImage);
+    if (custRes.data) db.customers = custRes.data.map(sbCustomer);
+    if (drvRes.data) db.drivers = drvRes.data.map(sbDriver);
+    if (bkRes.data) db.bookings = bkRes.data.map(sbBooking);
+    if (histRes.data) db.statusHistory = histRes.data.map(sbStatusEvent);
+    if (heroRes.data) db.hero = sbHero(heroRes.data);
+    if (devRes.data) db.devices = devRes.data.map(sbDevice);
+
+    // Load vehicle images into vehicle img fields
+    const primaryByVehicle = new Map<string, string>();
+    for (const im of db.vehicleImages) {
+      if (im.isPrimary && !primaryByVehicle.has(im.vehicleId)) {
+        primaryByVehicle.set(im.vehicleId, im.url);
+      }
+    }
+    for (const v of db.vehicles) {
+      const img = primaryByVehicle.get(v.id);
+      if (img) v.img = img;
+    }
+
+    persist();
+    sbLoaded = true;
+    console.log("[apc] Supabase data loaded");
+  } catch (err) {
+    console.warn("[apc] Supabase load failed, using local data", err);
+  } finally {
+    sbLoading = false;
+  }
+}
+
+function sbFire(promise: Promise<unknown>, label: string) {
+  promise.catch((err) => console.warn("[apc] Supabase write failed (" + label + ")", err));
+}
+
+/* ======================== API ======================== */
 
 export interface WebsiteBookingInput {
   name: string;
@@ -672,7 +965,25 @@ export interface WebsiteBookingInput {
 
 export const backend = {
   async login(pass: string): Promise<{ ok: boolean; error?: string }> {
-    await delay(380);
+    await delay(200);
+    const sb = getSupabase();
+    if (sb) {
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: "admin@apnapunjabcabs.in",
+        password: pass,
+      });
+      if (error) return { ok: false, error: error.message };
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ token: data.session.access_token, exp: Date.now() + 12 * 3600 * 1000 })
+      );
+      // Load data from Supabase after auth
+      await loadFromSupabase();
+      log("Signed in", "Admin session started via Supabase (12-hour session)");
+      persist();
+      return { ok: true };
+    }
+    // local mode
     const db = getDb();
     if (!db.settings.security.hash) {
       db.settings.security.hash = await hashPass(DEFAULT_PASSWORD, db.settings.security.salt);
@@ -698,6 +1009,16 @@ export const backend = {
         localStorage.removeItem(SESSION_KEY);
         return false;
       }
+      // If Supabase mode, also verify the Supabase session is still valid (async, best-effort)
+      const sb = getSupabase();
+      if (sb && !sbLoaded) {
+        sb.auth.getSession().then(({ data }) => {
+          if (!data.session) {
+            localStorage.removeItem(SESSION_KEY);
+            window.dispatchEvent(new CustomEvent("apc:db"));
+          }
+        }).catch(() => {});
+      }
       return true;
     } catch {
       return false;
@@ -706,6 +1027,10 @@ export const backend = {
 
   async logout() {
     await delay(100);
+    const sb = getSupabase();
+    if (sb) {
+      await sb.auth.signOut();
+    }
     localStorage.removeItem(SESSION_KEY);
     log("Signed out", "Admin session ended");
     persist();
@@ -713,6 +1038,15 @@ export const backend = {
 
   async changePassword(current: string, next: string): Promise<{ ok: boolean; error?: string }> {
     await delay(360);
+    const sb = getSupabase();
+    if (sb) {
+      // Supabase: update user password
+      const { error } = await sb.auth.updateUser({ password: next });
+      if (error) return { ok: false, error: error.message };
+      log("Security", "Admin password was changed via Supabase");
+      persist();
+      return { ok: true };
+    }
     const db = getDb();
     const cur = await hashPass(current, db.settings.security.salt);
     if (db.settings.security.hash && cur !== db.settings.security.hash)
@@ -728,13 +1062,15 @@ export const backend = {
   },
 
   async isDefaultPassword(): Promise<boolean> {
+    const sb = getSupabase();
+    if (sb) return false; // Supabase manages auth; no "default password" concept
     const db = getDb();
     if (!db.settings.security.hash) return true;
     const h = await hashPass(DEFAULT_PASSWORD, db.settings.security.salt);
     return h === db.settings.security.hash;
   },
 
-  /* ---- bookings: one table shared by website + CRM ---- */
+  /* ---- bookings ---- */
   listBookings(): Booking[] {
     return [...getDb().bookings].sort((a, b) => b.pickupAt.localeCompare(a.pickupAt));
   },
@@ -783,6 +1119,16 @@ export const backend = {
       log("Booking created", b.id + " · " + b.route + " · ₹" + b.fare.toLocaleString("en-IN"), by);
     }
     persist();
+
+    // Supabase write
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(
+        sb.from("bookings").upsert(appBooking(b), { onConflict: "id" }),
+        "saveBooking:" + b.id
+      );
+    }
+
     return b;
   },
 
@@ -791,18 +1137,17 @@ export const backend = {
     db.bookings = db.bookings.filter((b) => b.id !== id);
     log("Booking deleted", id);
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("bookings").delete().eq("id", id), "deleteBooking:" + id);
+    }
   },
 
-  /** Server-side validated website booking. Produces the exact same
-      record an admin manual booking produces — one database, one flow. */
   async createWebsiteBooking(input: WebsiteBookingInput): Promise<{ ok: boolean; id?: string; error?: string }> {
-    await delay(700);
-    const db = getDb();
+    await delay(500);
 
-    const vehicle = db.vehicles.find((v) => v.id === input.vehicleId && !v.archived);
-    if (!vehicle) return { ok: false, error: "Please choose a vehicle." };
-    if (!vehicle.available)
-      return { ok: false, error: vehicle.name + " is temporarily unavailable. Please pick another car or call us." };
+    // Client-side validation
     if (!input.name.trim() || input.name.trim().length < 3) return { ok: false, error: "Please enter your full name." };
     if (!/^[0-9+\-\s]{10,14}$/.test(input.phone.trim())) return { ok: false, error: "Please enter a valid phone number." };
     if (input.email && !/^\S+@\S+\.\S+$/.test(input.email)) return { ok: false, error: "Please enter a valid email address." };
@@ -812,20 +1157,60 @@ export const backend = {
     if (input.tripType === "round" && input.returnAt && new Date(input.returnAt) <= new Date(input.pickupAt))
       return { ok: false, error: "Return time must be after pickup time." };
 
-    const conflict = findConflict(db, vehicle.id, input.pickupAt, input.returnAt, input.km, input.tripType);
-    if (conflict)
-      return {
-        ok: false,
-        error:
-          vehicle.name +
-          " is already booked for an overlapping time slot (" +
-          conflict.id +
-          "). Please pick a different time or vehicle — or call us and we will arrange it.",
-      };
+    const sb = getSupabase();
+    if (sb) {
+      // Use the create_booking RPC
+      const { data, error } = await sb.rpc("create_booking", {
+        p_name: input.name.trim(),
+        p_phone: input.phone.trim(),
+        p_email: input.email?.trim() || null,
+        p_alt_phone: input.altPhone?.trim() || null,
+        p_vehicle_id: input.vehicleId,
+        p_pickup: input.pickup.trim(),
+        p_dropoff: input.dropoff.trim(),
+        p_km: input.km,
+        p_trip_type: input.tripType,
+        p_pickup_at: input.pickupAt,
+        p_return_at: input.tripType === "round" ? input.returnAt : null,
+        p_passengers: input.passengers,
+        p_notes: input.notes.trim() || "",
+        p_source: "website",
+      });
+      if (error) return { ok: false, error: error.message };
 
-    let customer = db.customers.find(
-      (c) => c.phone.replace(/\s/g, "") === input.phone.replace(/\s/g, "")
-    );
+      // Reload data from Supabase
+      sbLoaded = false;
+      await loadFromSupabase();
+
+      const bookingId = data as string;
+      const db = getDb();
+      const booking = db.bookings.find((b) => b.id === bookingId);
+      const vehicle = db.vehicles.find((v) => v.id === input.vehicleId);
+      const customer = db.customers.find((c) => c.phone.replace(/\s/g, "") === input.phone.replace(/\s/g, ""));
+
+      if (booking && vehicle) {
+        const when = new Date(booking.pickupAt).toLocaleString("en-IN", {
+          day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+        });
+        notifyAdmins(
+          "New booking received",
+          (customer?.name || input.name) + " booked " + vehicle.name + ". Pickup: " + booking.pickup + " · " + when,
+          "#/admin/bookings/" + booking.id
+        );
+      }
+      return { ok: true, id: bookingId };
+    }
+
+    // Local mode — original logic
+    const db = getDb();
+    const vehicle = db.vehicles.find((v) => v.id === input.vehicleId && !v.archived);
+    if (!vehicle) return { ok: false, error: "Please choose a vehicle." };
+    if (!vehicle.available) return { ok: false, error: vehicle.name + " is temporarily unavailable. Please pick another car or call us." };
+
+    const conflict = findConflict(db, vehicle.id, input.pickupAt, input.returnAt, input.km, input.tripType);
+    if (conflict) return { ok: false, error: vehicle.name + " is already booked for an overlapping time slot (" + conflict.id + "). Please pick a different time or vehicle — or call us and we will arrange it." };
+
+    let customer = db.customers.find((c) => c.phone.replace(/\s/g, "") === input.phone.replace(/\s/g, ""));
     if (!customer) {
       db.seq.customer += 1;
       customer = {
@@ -874,18 +1259,10 @@ export const backend = {
       to: "pending",
       by: "Website",
     });
-    log(
-      "Booking created",
-      booking.id + " · " + booking.route + " · " + vehicle.name + " · ₹" + fare.toLocaleString("en-IN") + " (online booking)",
-      "Website"
-    );
+    log("Booking created", booking.id + " · " + booking.route + " · " + vehicle.name + " · ₹" + fare.toLocaleString("en-IN") + " (online booking)", "Website");
 
-    // notification is secondary — the booking above is already saved
     const when = new Date(booking.pickupAt).toLocaleString("en-IN", {
-      day: "numeric",
-      month: "short",
-      hour: "numeric",
-      minute: "2-digit",
+      day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
     });
     notifyAdmins(
       "New booking received",
@@ -928,6 +1305,11 @@ export const backend = {
       log("Customer added", c.name + " · " + c.phone);
     }
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("customers").upsert(appCustomer(c), { onConflict: "id" }), "saveCustomer:" + c.id);
+    }
     return c;
   },
 
@@ -936,6 +1318,11 @@ export const backend = {
     db.customers = db.customers.filter((c) => c.id !== id);
     log("Customer deleted", id);
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("customers").delete().eq("id", id), "deleteCustomer:" + id);
+    }
   },
 
   /* ---- drivers ---- */
@@ -956,6 +1343,11 @@ export const backend = {
       log("Driver added", d.name + " · " + d.phone);
     }
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("drivers").upsert(appDriver(d), { onConflict: "id" }), "saveDriver:" + d.id);
+    }
     return d;
   },
 
@@ -1011,6 +1403,22 @@ export const backend = {
       }
     }
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("vehicles").upsert(appVehicle(v), { onConflict: "id" }), "saveVehicle:" + v.id);
+      if (images) {
+        sbFire(
+          (async () => {
+            await sb.from("vehicle_images").delete().eq("vehicle_id", v.id);
+            if (images.length > 0) {
+              await sb.from("vehicle_images").insert(images.map(appVehicleImage));
+            }
+          })(),
+          "saveVehicleImages:" + v.id
+        );
+      }
+    }
     return v;
   },
 
@@ -1020,6 +1428,14 @@ export const backend = {
     db.vehicles = db.vehicles.map((x) => (x.id === id ? { ...x, archived: true, available: false } : x));
     if (v) log("Fleet archived", v.name + " removed from the website");
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      const archived = db.vehicles.find((x) => x.id === id);
+      if (archived) {
+        sbFire(sb.from("vehicles").upsert(appVehicle(archived), { onConflict: "id" }), "deleteVehicle:" + id);
+      }
+    }
   },
 
   /* ---- hero + content ---- */
@@ -1032,6 +1448,11 @@ export const backend = {
     db.hero = { ...h, updatedAt: iso(new Date()) };
     log("Website updated", "Hero section " + (h.active ? "published" : "hidden"));
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("hero_sections").upsert(appHero(h), { onConflict: "id" }), "saveHero");
+    }
   },
 
   getSettingsSync() {
@@ -1044,17 +1465,64 @@ export const backend = {
     if (patch.content) db.settings.content = { ...db.settings.content, ...patch.content };
     if (patch.backend) {
       db.settings.backend = { ...db.settings.backend, ...patch.backend };
+      // Reset Supabase client when backend config changes
+      if (patch.backend.mode !== "supabase" || patch.backend.url !== db.settings.backend.url) {
+        sbClient = null;
+        sbLoaded = false;
+      }
+      // Trigger data load when switching to Supabase
+      if (patch.backend.mode === "supabase" && patch.backend.url && patch.backend.anonKey) {
+        setTimeout(() => loadFromSupabase(), 100);
+      }
       log("Backend", "Data source set to " + (patch.backend.mode === "supabase" ? "Supabase" : "local demo database"));
     }
     log("Settings saved", Object.keys(patch).join(", "));
     persist();
+
+    // Save theme/content to Supabase
+    const sb = getSupabase();
+    if (sb && (patch.theme || patch.content)) {
+      const s = db.settings;
+      sbFire(
+        sb.from("website_settings").upsert({
+          id: 1,
+          tagline: s.content.tagline,
+          phone_display: s.content.phoneDisplay,
+          phone_raw: s.content.phoneRaw,
+          instagram_handle: s.content.instagramHandle,
+          instagram: s.content.instagram,
+          address: s.content.address,
+          email: s.content.email,
+          wa_greeting: s.content.waGreeting,
+          theme_accent: s.theme.accent,
+          theme_font: s.theme.font,
+          theme_radius: s.theme.radius,
+        }, { onConflict: "id" }),
+        "saveSettings"
+      );
+    }
   },
 
   async resetAll() {
     await delay(300);
+    const sb = getSupabase();
+    if (sb) {
+      // Clear Supabase tables
+      await sb.from("booking_status_history").delete().neq("id", "");
+      await sb.from("bookings").delete().neq("id", "");
+      await sb.from("customers").delete().neq("id", "");
+      await sb.from("drivers").delete().neq("id", "");
+      await sb.from("vehicle_images").delete().neq("id", "");
+      await sb.from("vehicles").delete().neq("id", "");
+      sbLoaded = false;
+    }
     localStorage.removeItem(KEY);
     cache = seed();
     persist();
+    if (sb) {
+      // Re-seed to Supabase
+      await loadFromSupabase();
+    }
   },
 
   /* ---- notification devices ---- */
@@ -1068,6 +1536,11 @@ export const backend = {
     db.devices.push(d);
     log("Device registered", label + " · push enabled");
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("notification_devices").insert(appDevice(d)), "registerDevice");
+    }
     return d;
   },
 
@@ -1076,6 +1549,11 @@ export const backend = {
     db.devices = db.devices.filter((d) => d.id !== id);
     log("Device removed", "Push device unregistered");
     persist();
+
+    const sb = getSupabase();
+    if (sb) {
+      sbFire(sb.from("notification_devices").delete().eq("id", id), "removeDevice");
+    }
   },
 
   listNotices(): Notice[] {
@@ -1155,16 +1633,7 @@ export const backend = {
   },
 };
 
-/* ------------------------ Supabase readiness ----------------------- */
-
-let sbClient: SupabaseClient | null = null;
-
-export function getSupabase(): SupabaseClient | null {
-  const cfg = getDb().settings.backend;
-  if (cfg.mode !== "supabase" || !cfg.url || !cfg.anonKey) return null;
-  if (!sbClient) sbClient = createClient(cfg.url, cfg.anonKey);
-  return sbClient;
-}
+/* ======================== Supabase realtime ======================== */
 
 /** Live channel — Supabase Realtime when configured, local events always. */
 export function useBackendRealtime(onEvent?: (evt: string) => void): number {
@@ -1176,13 +1645,26 @@ export function useBackendRealtime(onEvent?: (evt: string) => void): number {
       .channel("bookings-rt")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "bookings" },
-        (payload) => onEvent && onEvent("insert:" + (payload.new as Booking).id)
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "bookings" },
-        (payload) => onEvent && onEvent("update:" + (payload.new as Booking).id)
+        { event: "*", schema: "public", table: "bookings" },
+        (payload) => {
+          const evt = payload.eventType;
+          const rec = payload.new as Record<string, unknown>;
+          if (evt === "INSERT" || evt === "UPDATE") {
+            // Refresh bookings in cache
+            sb.from("bookings").select("*").order("pickup_at", { ascending: false }).then(({ data }) => {
+              const db = getDb();
+              if (data) db.bookings = data.map(sbBooking);
+              persist();
+              onEvent && onEvent(evt + ":" + rec.id);
+            });
+          } else if (evt === "DELETE") {
+            const oldRec = payload.old as Record<string, unknown>;
+            const db = getDb();
+            db.bookings = db.bookings.filter((b) => b.id !== oldRec.id);
+            persist();
+            onEvent && onEvent("delete:" + oldRec.id);
+          }
+        }
       )
       .subscribe();
     return () => {
