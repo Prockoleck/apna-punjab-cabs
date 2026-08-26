@@ -7,7 +7,7 @@ language plpgsql security definer as $$
 begin
   if new.source = 'website' and tg_op = 'INSERT' then
     perform net.http_post(
-      url := 'https://rwhzmxsvkjotnxywoxyj.functions.supabase.co/notify-admin',
+      url := 'https://qzgvvfywjmspbbqglpdx.functions.supabase.co/notify-admin',
       headers := '{"Content-Type": "application/json"}'::jsonb,
       body := jsonb_build_object('booking_id', new.id, 'record', row_to_json(new))
     );
