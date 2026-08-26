@@ -888,8 +888,6 @@ function notifyAdmins(title: string, body: string, link: string) {
 
 /* ======================== Supabase helpers ======================== */
 
-const VAPID_PUBLIC_KEY = "BACMhB7kzFH5mYSk0_1ejpaCYNNvlzRkFn4R5TRxzhC9F6w4_K8-X5AxsrE7l56rqi3QtCMwSAOgsw8gc5l77VE";
-
 let sbClient: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient | null {
@@ -1535,35 +1533,21 @@ export const backend = {
     }
   },
 
-  /* ---- notification devices ---- */
+  /* ---- notification devices (Telegram) ---- */
   listDevices(): Device[] {
     return [...getDb().devices];
   },
 
-  async registerDevice(label: string): Promise<Device | null> {
+  async registerDevice(chatId: string, label?: string): Promise<Device | null> {
+    if (!chatId || !/^\d+$/.test(chatId)) return null;
     const db = getDb();
-    // Get real push subscription from the browser
-    let endpoint = "";
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: VAPID_PUBLIC_KEY,
-      });
-      endpoint = sub.endpoint;
-    } catch (err) {
-      console.warn("[apc] Push subscribe failed", err);
-      return null;
-    }
-    if (!endpoint) return null;
-
-    // Dedup: remove existing device with same endpoint
-    const existing = db.devices.find((d) => d.token === endpoint);
+    // Dedup: same chat_id already registered
+    const existing = db.devices.find((d) => d.token === chatId);
     if (existing) return existing;
 
-    const d: Device = { id: uid(), token: endpoint, label, createdAt: iso(new Date()) };
+    const d: Device = { id: uid(), token: chatId, label: label || "Telegram (" + chatId + ")", createdAt: iso(new Date()) };
     db.devices.push(d);
-    log("Device registered", label + " · push enabled");
+    log("Device registered", d.label);
     persist();
 
     const sb = getSupabase();
@@ -1573,19 +1557,11 @@ export const backend = {
     return d;
   },
 
-  async removeDevice(id: string) {
+  removeDevice(id: string) {
     const db = getDb();
     const device = db.devices.find((d) => d.id === id);
-    // Unsubscribe from push if removing the current device
-    if (device) {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (sub && sub.endpoint === device.token) await sub.unsubscribe();
-      } catch { /* ignore */ }
-    }
     db.devices = db.devices.filter((d) => d.id !== id);
-    log("Device removed", "Push device unregistered");
+    log("Device removed", "Telegram device unregistered");
     persist();
 
     const sb = getSupabase();

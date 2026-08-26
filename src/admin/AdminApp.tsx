@@ -825,7 +825,6 @@ function SettingsPage({ notify }: { notify: Notify }) {
   const [busy, setBusy] = useState(false);
   const [pwErr, setPwErr] = useState("");
   const [isDefault, setIsDefault] = useState(true);
-  const [perm, setPerm] = useState<string>(() => (typeof Notification !== "undefined" ? Notification.permission : "unsupported"));
   const [cfg, setCfg] = useState<BackendConfig>({ ...backend.getSettingsSync().backend });
 
   useEffect(() => {
@@ -856,23 +855,19 @@ function SettingsPage({ notify }: { notify: Notify }) {
 
   const strength = next.length === 0 ? 0 : next.length < 8 ? 1 : next.length < 12 ? 2 : 3;
 
-  const enablePush = async () => {
-    if (typeof Notification === "undefined") {
-      notify("This browser does not support notifications", "err");
+  const [tgChatId, setTgChatId] = useState("");
+
+  const registerTelegram = async () => {
+    if (!tgChatId.trim() || !/^\d+$/.test(tgChatId.trim())) {
+      notify("Enter a valid Telegram chat ID (numbers only)", "err");
       return;
     }
-    const p = await Notification.requestPermission();
-    setPerm(p);
-    if (p === "granted") {
-      const device = await backend.registerDevice(navigator.userAgent.includes("Mobile") ? "Admin phone" : "Admin browser");
-      if (device) {
-        notify("Push enabled on this device");
-        backend.testNotification();
-      } else {
-        notify("Push subscription failed — try again", "err");
-      }
+    const device = await backend.registerDevice(tgChatId.trim());
+    if (device) {
+      notify("Telegram notifications enabled for " + device.label);
+      setTgChatId("");
     } else {
-      notify("Permission not granted", "err");
+      notify("Registration failed", "err");
     }
   };
 
@@ -931,18 +926,30 @@ function SettingsPage({ notify }: { notify: Notify }) {
         </section>
 
         <div className="space-y-5">
-          {/* push notifications */}
+          {/* Telegram notifications */}
           <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
-            <h3 className="font-display text-base font-extrabold text-ink-900">Push notifications</h3>
+            <h3 className="font-display text-base font-extrabold text-ink-900">Telegram Notifications</h3>
             <p className="text-xs font-semibold text-ink-400">
-              Every new website booking pings all registered admin devices instantly. In production this flows through the Firebase Cloud Messaging edge function.
+              Get instant Telegram alerts for every new website booking.
             </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2.5">
-              <button onClick={enablePush} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg ${perm === "granted" ? "bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-600" : "bg-sky-500 text-white shadow-sky-500/25 hover:bg-sky-600"}`}>
-                {perm === "granted" ? <><IconCheck size={15} /> Re-register this device</> : <><IconBolt size={15} /> Enable push on this device</>}
-              </button>
-              <button onClick={() => backend.testNotification()} className="rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-bold text-ink-600 hover:bg-ink-50">
-                Send test
+            <div className="mt-3 rounded-xl bg-ink-50 p-3.5 text-xs text-ink-600 leading-relaxed">
+              <p className="font-bold text-ink-800 mb-1">How to set up:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Open <a href="https://t.me/Apnapunjabcabs_bot" target="_blank" rel="noreferrer" className="font-bold text-sky-600 hover:underline">@Apnapunjabcabs_bot</a> on Telegram</li>
+                <li>Send <code className="rounded bg-ink-100 px-1 font-mono">/start</code></li>
+                <li>Forward any message from the bot to <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="font-bold text-sky-600 hover:underline">@userinfobot</a> to get your chat ID</li>
+                <li>Paste the chat ID below and click Register</li>
+              </ol>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <input
+                value={tgChatId}
+                onChange={(e) => setTgChatId(e.target.value)}
+                placeholder="Telegram chat ID"
+                className="flex-1 rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-ink-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20"
+              />
+              <button onClick={registerTelegram} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 hover:bg-sky-600">
+                Register
               </button>
             </div>
             {devices.length > 0 && (
@@ -952,7 +959,7 @@ function SettingsPage({ notify }: { notify: Notify }) {
                   <div key={d.id} className="flex items-center justify-between rounded-xl bg-ink-50 px-3.5 py-2.5">
                     <div>
                       <p className="text-sm font-bold text-ink-800">{d.label}</p>
-                      <p className="font-mono text-[10px] text-ink-400">{d.token.slice(0, 18)}… · {timeAgo(d.createdAt)}</p>
+                      <p className="font-mono text-[10px] text-ink-400">ID: {d.token} · {timeAgo(d.createdAt)}</p>
                     </div>
                     <button onClick={() => backend.removeDevice(d.id)} className="text-xs font-bold text-rose-500 hover:text-rose-600">
                       Remove
