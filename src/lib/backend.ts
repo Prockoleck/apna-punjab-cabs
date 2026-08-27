@@ -1203,7 +1203,18 @@ export const backend = {
         fetch(`${supabaseUrl}/functions/v1/notify-admin`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
-          body: JSON.stringify({ record: { ...booking, customer_id: customer?.id ?? booking.customerId, vehicle_id: booking.vehicleId } }),
+          body: JSON.stringify({
+            record: {
+              id: booking.id,
+              customer_id: customer?.id ?? "",
+              vehicle_id: booking.vehicleId,
+              pickup: booking.pickup,
+              dropoff: booking.dropoff,
+              pickup_at: booking.pickupAt,
+              source: booking.source,
+              fare: booking.fare,
+            },
+          }),
         }).catch(() => {});
       }
 
