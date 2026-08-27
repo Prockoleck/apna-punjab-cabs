@@ -29,9 +29,19 @@ interface BookingPayload {
 }
 
 serve(async (req) => {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     if (req.method !== "POST") {
-      return json({ error: "POST only" }, 405);
+      return json({ error: "POST only" }, 405, corsHeaders);
     }
 
     const payload = (await req.json()) as BookingPayload;
@@ -39,7 +49,7 @@ serve(async (req) => {
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 
     if (!botToken) {
-      return json({ ok: false, error: "TELEGRAM_BOT_TOKEN not set" }, 500);
+      return json({ ok: false, error: "TELEGRAM_BOT_TOKEN not set" }, 500, corsHeaders);
     }
 
     const supabase = createClient(
@@ -57,7 +67,7 @@ serve(async (req) => {
       .select("fcm_token, label");
 
     if (!devices || devices.length === 0) {
-      return json({ ok: true, sent: 0, note: "no admin devices registered" });
+      return json({ ok: true, sent: 0, note: "no admin devices registered" }, 200, corsHeaders);
     }
 
     const when = new Date(booking.pickup_at).toLocaleString("en-IN", {
@@ -109,15 +119,15 @@ serve(async (req) => {
 
     if (failed.length) console.error("[notify-admin] failures:", failed);
 
-    return json({ ok: true, sent, failed: failed.length });
+    return json({ ok: true, sent, failed: failed.length }, 200, corsHeaders);
   } catch (err) {
     console.error("[notify-admin]", err);
-    return json({ ok: false, error: String(err) }, 500);
+    return json({ ok: false, error: String(err) }, 500, corsHeaders);
   }
 });
 
-const json = (body: unknown, status = 200) =>
+const json = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
   });
