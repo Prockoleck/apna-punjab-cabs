@@ -692,7 +692,7 @@ function seed(): DB {
       },
       security: { salt: uid() + uid(), hash: null, changedAt: null },
       backend: {
-        mode: "local",
+        mode: "supabase",
         url: "https://qzgvvfywjmspbbqglpdx.supabase.co",
         anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6Z3Z2Znl3am1zcGJicWdscGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3MzM4OTgsImV4cCI6MjEwMzMwOTg5OH0.WYA6SVp_qxGfPwYUt5BuLKeyrw7Yzwr8k5E0dgklruA",
       },
