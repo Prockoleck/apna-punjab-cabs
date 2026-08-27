@@ -52,7 +52,7 @@ serve(async (req) => {
       supabase.from("vehicles").select("name").eq("id", booking.vehicle_id).single(),
     ]);
 
-    const { data: devices } = await supabase
+    const { data: devices, error: devErr } = await supabase
       .from("notification_devices")
       .select("fcm_token, label");
 
