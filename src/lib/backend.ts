@@ -1196,6 +1196,17 @@ export const backend = {
       const vehicle = db.vehicles.find((v) => v.id === input.vehicleId);
       const customer = db.customers.find((c) => c.phone.replace(/\s/g, "") === input.phone.replace(/\s/g, ""));
 
+      // Fire-and-forget Telegram notification
+      if (booking) {
+        const supabaseUrl = "https://qzgvvfywjmspbbqglpdx.supabase.co";
+        const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6Z3Z2Znl3am1zcGJicWdscGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3MzM4OTgsImV4cCI6MjEwMzMwOTg5OH0.WYA6SVp_qxGfPwYUt5BuLKeyrw7Yzwr8k5E0dgklruA";
+        fetch(`${supabaseUrl}/functions/v1/notify-admin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
+          body: JSON.stringify({ record: { ...booking, customer_id: customer?.id ?? booking.customerId, vehicle_id: booking.vehicleId } }),
+        }).catch(() => {});
+      }
+
       if (booking && vehicle) {
         const when = new Date(booking.pickupAt).toLocaleString("en-IN", {
           day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
