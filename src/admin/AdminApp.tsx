@@ -974,43 +974,20 @@ function SettingsPage({ notify }: { notify: Notify }) {
           <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm">
             <h3 className="font-display text-base font-extrabold text-ink-900">Data source</h3>
             <p className="text-xs font-semibold text-ink-400">
-              Local demo database ships with this build. Point the console at your Supabase project to go live — schema in <code className="rounded bg-ink-100 px-1 font-mono">/supabase/schema.sql</code>.
+              Connected to Supabase — all data is stored in PostgreSQL. Bookings, vehicles, and customers sync in real time.
             </p>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {(["local", "supabase"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setCfg({ ...cfg, mode: m })}
-                  className={`rounded-xl border-2 p-3 text-left transition-all ${cfg.mode === m ? "border-sky-500 bg-sky-50/60" : "border-ink-100 hover:border-ink-300"}`}
-                >
-                  <p className="text-sm font-extrabold text-ink-900">{m === "local" ? "Local demo DB" : "Supabase"}</p>
-                  <p className="text-[11px] font-semibold text-ink-400">{m === "local" ? "Browser storage + realtime tabs" : "PostgreSQL + Realtime + Storage"}</p>
-                </button>
-              ))}
+            <div className="mt-4 rounded-xl border-2 border-emerald-400 bg-emerald-50/60 p-3">
+              <p className="text-sm font-extrabold text-emerald-800">Supabase (active)</p>
+              <p className="text-[11px] font-semibold text-emerald-600">PostgreSQL + Realtime + Storage</p>
             </div>
-            {cfg.mode === "supabase" && (
-              <div className="mt-3 space-y-3">
-                <Field label="Project URL">
-                  <input value={cfg.url} onChange={(e) => setCfg({ ...cfg, url: e.target.value })} className={inputCls} placeholder="https://xxxx.supabase.co" />
-                </Field>
-                <Field label="Anon / public key">
-                  <input value={cfg.anonKey} onChange={(e) => setCfg({ ...cfg, anonKey: e.target.value })} className={inputCls} placeholder="eyJhbGciOi…" />
-                </Field>
-              </div>
-            )}
-            <button
-              onClick={() => {
-                backend.saveSettings({ backend: cfg });
-                if (cfg.mode === "supabase" && !cfg.url) {
-                  notify("Supabase selected — add credentials to connect", "err");
-                } else {
-                  notify(cfg.mode === "supabase" ? "Supabase connected — realtime channels active" : "Using local demo database");
-                }
-              }}
-              className="mt-4 rounded-xl bg-ink-900 px-4 py-2.5 text-sm font-bold text-white hover:-translate-y-0.5"
-            >
-              Save data source
-            </button>
+            <div className="mt-3 space-y-3">
+              <Field label="Project URL">
+                <input value={cfg.url} readOnly className={inputCls + " bg-ink-50"} placeholder="https://xxxx.supabase.co" />
+              </Field>
+              <Field label="Anon / public key">
+                <input value={cfg.anonKey} readOnly className={inputCls + " bg-ink-50"} placeholder="eyJhbGciOi…" />
+              </Field>
+            </div>
           </section>
 
           {/* danger zone */}
